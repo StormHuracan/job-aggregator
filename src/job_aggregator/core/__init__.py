@@ -1,1 +1,1 @@
-"""Core application utilities."""
+"""Базовые утилиты приложения."""

@@ -1,8 +1,30 @@
 # job-aggregator
 
-job-aggregator is a backend service for aggregating developer vacancies.
+`job-aggregator` — backend-сервис для агрегации вакансий разработчиков.
 
-## Stack
+Сервис собирает вакансии из внешних источников, сохраняет их в PostgreSQL без
+дубликатов, обновляет уже известные вакансии и предоставляет данные через
+REST API.
+
+## MVP
+
+В рамках MVP проект должен уметь:
+
+- запускать FastAPI-приложение;
+- подключаться к PostgreSQL через настройки окружения;
+- собирать вакансии разработчиков из внешнего API;
+- сохранять вакансии через SQLAlchemy 2.x;
+- предотвращать дубли по внешнему идентификатору вакансии;
+- обновлять изменившиеся данные уже сохранённых вакансий;
+- отдавать сохранённые вакансии через REST API;
+- поддерживать фильтрацию и пагинацию;
+- запускать сбор вручную для демонстрации и по расписанию;
+- покрывать основную логику тестами без реальных сетевых запросов.
+
+Не входит в MVP, если не останется времени: автоотклики, уведомления,
+AI-фильтрация, статистика рынка и административный интерфейс.
+
+## Стек
 
 - Python 3.14
 - FastAPI
@@ -13,7 +35,31 @@ job-aggregator is a backend service for aggregating developer vacancies.
 - pytest
 - uv
 
-## Local setup
+## Архитектура
+
+Проект строится как простое слоистое приложение:
+
+```text
+FastAPI routes
+  -> application services
+    -> repositories / database models
+    -> external API integrations
+      -> external vacancy APIs
+```
+
+Основные зоны ответственности:
+
+- `api` — HTTP-роуты FastAPI;
+- `core` — конфигурация и логирование;
+- `db` — подключение к базе данных, сессии SQLAlchemy и базовая metadata;
+- `integrations` — клиенты внешних API;
+- `services` — бизнес-логика приложения.
+
+Бизнес-логику не стоит размещать прямо в роутерах, если она становится
+нетривиальной. Интеграции с внешними API должны быть изолированы от API-слоя и
+тестироваться с моками.
+
+## Локальный запуск
 
 ```bash
 uv sync
@@ -21,24 +67,48 @@ cp .env.example .env
 uv run uvicorn job_aggregator.main:app --reload
 ```
 
-Health check:
+Для локального запуска нужен PostgreSQL, доступный по `DATABASE_URL` из `.env`.
+
+Проверка работоспособности приложения:
 
 ```bash
 curl http://127.0.0.1:8000/health
 ```
 
-## Tests
+Ожидаемый ответ:
+
+```json
+{"status": "ok"}
+```
+
+## Настройки окружения
+
+Пример настроек находится в `.env.example`.
+
+Основные переменные:
+
+- `APP_NAME` — имя приложения;
+- `APP_ENV` — окружение запуска;
+- `LOG_LEVEL` — уровень логирования;
+- `DATABASE_URL` — строка подключения к PostgreSQL.
+
+Реальные секреты, токены и пароли нельзя коммитить в репозиторий.
+
+## Тесты
 
 ```bash
 uv run pytest
 ```
 
-## Project structure
+Тесты внешних интеграций должны использовать моки. Тестовый прогон не должен
+зависеть от доступности реальных внешних API.
+
+## Структура проекта
 
 ```text
 src/job_aggregator/
-├── api/        # FastAPI routers and endpoints
-├── core/       # configuration and logging
-├── db/         # SQLAlchemy engine, sessions, base metadata
-└── main.py     # application factory
+├── api/        # HTTP-роуты FastAPI
+├── core/       # конфигурация и логирование
+├── db/         # база данных, engine, session factory, metadata
+└── main.py     # создание FastAPI-приложения
 ```

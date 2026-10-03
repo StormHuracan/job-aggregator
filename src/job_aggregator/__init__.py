@@ -1,1 +1,1 @@
-"""job-aggregator backend package."""
+"""Backend-пакет приложения job-aggregator."""
