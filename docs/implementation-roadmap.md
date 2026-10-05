@@ -28,6 +28,7 @@ Job Aggregator — backend-сервис, который собирает вак�
 | Внешние запросы | aiohttp и asyncio |
 | Плановый сбор | APScheduler, раз в час по умолчанию |
 | Тесты | pytest, без сетевых вызовов к HH.ru |
+| Стиль кода | Ruff: проверка, сортировка импортов и форматирование |
 | Конфигурация | environment variables и `.env` |
 | Логи | стандартный Python logging |
 
@@ -94,6 +95,7 @@ PostgreSQL запускается через Docker Compose.
 - [JA-7 — Настроить конфигурацию через переменные окружения](https://StackEight.youtrack.cloud/issue/JA-7)
 - [JA-10 — Подготовить локальный PostgreSQL через Docker Compose](https://StackEight.youtrack.cloud/issue/JA-10)
 - [JA-14 — Добавить базовую модель Base и timestamps](https://StackEight.youtrack.cloud/issue/JA-14)
+- [JA-55 — Добавить Ruff для проверки и форматирования кода](https://StackEight.youtrack.cloud/issue/JA-55)
 
 ### 2. Контракты и PostgreSQL
 
@@ -165,6 +167,7 @@ flowchart LR
 | Высокий | JA-10: Docker PostgreSQL | модели, миграции и репозитории |
 | Высокий | JA-14: timestamps | модели вакансий, токенов и поисков |
 | Высокий | JA-53: параметры поиска HH.ru | контракт и провайдеры HH.ru |
+| Можно начать сейчас | JA-55: Ruff | единый стиль и базовые проверки перед ревью |
 | Параллельно | JA-19, JA-20, JA-21 | API без ожидания БД |
 
 ## Рабочий процесс команды
@@ -182,7 +185,8 @@ flowchart LR
 ```
 
 Перед началом задачи нужно открыть ссылки на поставляющие контракты в её
-описании. Перед ревью — выполнить `uv run pytest`.
+описании. После выполнения JA-55 перед ревью — выполнить `uv run ruff check .`,
+`uv run ruff format --check .` и `uv run pytest`.
 
 ## Направления роста после MVP
 
