@@ -1,6 +1,6 @@
 # job-aggregator
 
-`job-aggregator` — backend-сервис для агрегации вакансий разработчиков.
+`job-aggregator` — backend-сервис для агрегации вакансий разработчиков с HH.ru.
 
 Сервис собирает вакансии из внешних источников, сохраняет их в PostgreSQL без
 дубликатов, обновляет уже известные вакансии и предоставляет данные через
@@ -12,7 +12,7 @@ REST API.
 
 - запускать FastAPI-приложение;
 - подключаться к PostgreSQL через настройки окружения;
-- собирать вакансии разработчиков из внешнего API;
+- собирать вакансии разработчиков с HH.ru;
 - сохранять вакансии через SQLAlchemy 2.x;
 - предотвращать дубли по внешнему идентификатору вакансии;
 - обновлять изменившиеся данные уже сохранённых вакансий;
@@ -36,15 +36,72 @@ AI-фильтрация, статистика рынка и администра
 - uv
 
 
-## Структура проекта
+## Целевая структура проекта
+
+Сейчас в репозитории находится минимальный каркас. По мере выполнения задач
+YouTrack он вырастет до следующей структуры:
 
 ```text
-src/job_aggregator/
-├── api/        # HTTP-роуты FastAPI
-├── core/       # конфигурация и логирование
-├── db/         # база данных, engine, session factory, metadata
-└── main.py     # создание FastAPI-приложения
+job-aggregator/
+├── alembic/                         # миграции PostgreSQL
+│   ├── env.py
+│   └── versions/
+├── alembic.ini
+├── docker-compose.yml                # локальная PostgreSQL
+├── docs/                             # карта реализации и документация команды
+├── src/job_aggregator/
+│   ├── api/                          # HTTP-роуты FastAPI
+│   │   ├── health.py
+│   │   ├── hh_auth.py                # OAuth-endpoint-ы HH.ru
+│   │   ├── collection.py             # ручной запуск сбора
+│   │   ├── saved_searches.py
+│   │   ├── vacancies.py
+│   │   └── router.py                 # подключение роутеров
+│   ├── core/
+│   │   ├── config.py                 # Settings из environment variables
+│   │   └── logging.py
+│   ├── db/
+│   │   ├── base.py                   # Base и TimestampMixin
+│   │   ├── session.py                # engine и AsyncSession
+│   │   ├── models/
+│   │   │   ├── vacancy.py
+│   │   │   ├── saved_search.py
+│   │   │   └── hh_account_token.py
+│   │   └── repositories/
+│   │       ├── vacancies.py
+│   │       └── saved_searches.py
+│   ├── integrations/
+│   │   └── hh/
+│   │       ├── dto.py                # данные поиска и вакансий HH.ru
+│   │       ├── client.py             # низкоуровневый клиент HH.ru
+│   │       ├── oauth.py
+│   │       ├── provider.py           # real-провайдер вакансий
+│   │       ├── fake_provider.py      # данные для тестов и разработки
+│   │       ├── mapper.py
+│   │       ├── factory.py
+│   │       └── errors.py
+│   ├── schemas/                      # request/response DTO REST API
+│   │   ├── vacancy.py
+│   │   ├── collection.py
+│   │   └── saved_search.py
+│   ├── services/
+│   │   ├── collection.py             # бизнес-логика сбора
+│   │   └── tokens.py
+│   ├── scheduler/
+│   │   └── scheduler.py
+│   └── main.py                       # создание FastAPI-приложения
+└── tests/
+    ├── api/
+    ├── db/
+    ├── integrations/hh/
+    └── services/
 ```
+
+Не все каталоги нужно создавать заранее: они появляются только вместе с
+соответствующей задачей. Это уменьшает пустые файлы и конфликты при merge.
+
+Подробная карта этапов находится в
+[docs/implementation-roadmap.md](docs/implementation-roadmap.md).
 
 
 ## Архитектура
@@ -52,11 +109,14 @@ src/job_aggregator/
 Проект строится как простое слоистое приложение:
 
 ```text
-FastAPI routes
-  -> application services
-    -> repositories / database models
-    -> external API integrations
-      -> external vacancy APIs
+HTTP-роуты FastAPI
+  -> сервисы приложения
+    -> репозитории и PostgreSQL
+    -> интеграция с HH.ru
+  -> response schemas
+
+планировщик
+  -> сервисы приложения
 ```
 
 Основные зоны ответственности:
@@ -66,10 +126,16 @@ FastAPI routes
 - `db` — подключение к базе данных, сессии SQLAlchemy и базовая metadata;
 - `integrations` — клиенты внешних API;
 - `services` — бизнес-логика приложения.
+- `schemas` — публичные request/response-модели API;
+- `scheduler` — запуск сервисов по расписанию.
 
 Бизнес-логику не стоит размещать прямо в роутерах, если она становится
 нетривиальной. Интеграции с внешними API должны быть изолированы от API-слоя и
 тестироваться с моками.
+
+`repositories` содержат только операции с PostgreSQL для конкретных сущностей;
+общий generic repository не используется. `services` не зависят от FastAPI и
+могут тестироваться с fake-провайдерами HH.ru без сети.
 
 ## Локальный запуск
 
