@@ -7,7 +7,9 @@ class Settings(BaseSettings):
     app_name: str = "job-aggregator"
     app_env: str = "local"
     log_level: str = "INFO"
-    database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/job_aggregator"
+    database_url: str = (
+        "postgresql+asyncpg://postgres:postgres@localhost:5432/job_aggregator"
+    )
 
     model_config = SettingsConfigDict(
         env_file=".env",
