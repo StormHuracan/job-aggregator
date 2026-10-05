@@ -1,15 +1,24 @@
 from collections.abc import AsyncIterator
 
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from fastapi import Request
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 
 
-def create_session_factory(database_url: str) -> async_sessionmaker[AsyncSession]:
-    engine = create_async_engine(database_url)
-    return async_sessionmaker(engine, expire_on_commit=False)
+def create_engine_and_factory(
+    database_url: str,
+) -> tuple[AsyncEngine, async_sessionmaker[AsyncSession]]:
+    engine = create_async_engine(database_url, echo=False, future=True)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    return engine, factory
 
 
-async def get_db_session(
-    session_factory: async_sessionmaker[AsyncSession],
-) -> AsyncIterator[AsyncSession]:
-    async with session_factory() as session:
+async def get_db_session(request: Request) -> AsyncIterator[AsyncSession]:
+    """FastAPI-зависимость: выдаёт AsyncSession на запрос и закрывает после."""
+    factory: async_sessionmaker[AsyncSession] = request.app.state.session_factory
+    async with factory() as session:
         yield session
