@@ -1,13 +1,6 @@
 version: 2
 
 secret:
-  ignored-paths:
+  ignored_paths:
     - .env.example
     - docker-compose.yml
-
-  ignored-matches:
-    - name: Local dev postgres default password
-      match: postgres
-      paths:
-        - .env.example
-        - docker-compose.yml
