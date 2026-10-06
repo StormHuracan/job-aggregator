@@ -1,8 +1,7 @@
 from datetime import datetime
-from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import JSON, DateTime, Numeric, String, Text, UniqueConstraint
+from sqlalchemy import JSON, DateTime, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from job_aggregator.db.base import Base, TimestampMixin
@@ -43,12 +42,12 @@ class Vacancy(TimestampMixin, Base):
         String(255),
         nullable=True,
     )
-    salary_from: Mapped[Decimal | None] = mapped_column(
-        Numeric(12, 2),
+    salary_from: Mapped[int | None] = mapped_column(
+        Integer,
         nullable=True,
     )
-    salary_to: Mapped[Decimal | None] = mapped_column(
-        Numeric(12, 2),
+    salary_to: Mapped[int | None] = mapped_column(
+        Integer,
         nullable=True,
     )
     salary_currency: Mapped[str | None] = mapped_column(
