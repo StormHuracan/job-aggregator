@@ -1,0 +1,6 @@
+version: 2
+
+secret:
+  ignored_matches:
+    - name: Local PostgreSQL development password
+      match: postgres
