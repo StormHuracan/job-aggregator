@@ -32,9 +32,11 @@ Job Aggregator — backend-сервис, который собирает вак�
 | Конфигурация | environment variables и `.env` |
 | Логи | стандартный Python logging |
 
-Интеграция с HH.ru изолирована внутри приложения. `hh-applicant-tool` может
-использоваться только там как helper для OAuth и API-транспорта. Токены,
-хранение токенов и правила их обновления принадлежат нашему приложению.
+Интеграция с HH.ru изолирована внутри приложения. `HHClient` нормализует ответы
+HH.ru сразу в `VacancyData`; отдельный DTO, повторяющий поля данных для
+сохранения, не создаётся. `hh-applicant-tool` используется только внутри
+интеграции как helper для OAuth и API-транспорта. Токены, их хранение и правила
+обновления принадлежат нашему приложению.
 
 ## Простая архитектура
 
@@ -61,13 +63,13 @@ flowchart LR
     Search[Сохранённый поиск\nили ручной запрос]
     Collect[Сервис сбора]
     HH[HH.ru]
-    Normalize[Приведение данных\nк нашему формату]
+    Client[HHClient\nнормализует в VacancyData]
     Store[(PostgreSQL)]
     List[GET /vacancies]
 
-    Search --> Collect --> HH
-    HH --> Collect
-    Collect --> Normalize --> Store --> List
+    Search --> Collect --> Client --> HH
+    Client --> Collect
+    Collect --> Store --> List
 ```
 
 ## Этапы разработки
@@ -123,7 +125,7 @@ flowchart LR
 - [JA-20 — Описать параметры списка вакансий](https://StackEight.youtrack.cloud/issue/JA-20)
 - [JA-21 — Описать схемы ручного запуска сбора вакансий](https://StackEight.youtrack.cloud/issue/JA-21)
 - [JA-53 — Добавить DTO параметров поиска вакансий HH.ru](https://StackEight.youtrack.cloud/issue/JA-53)
-- [JA-22 — Описать DTO результата поиска и контракт HHVacancyProvider](https://StackEight.youtrack.cloud/issue/JA-22)
+- [JA-22 — Описать DTO страницы поиска HH.ru](https://StackEight.youtrack.cloud/issue/JA-22)
 
 **Задачи хранения:** JA-13–JA-18, JA-26, JA-33, JA-34, JA-40 и JA-54.
 
@@ -136,15 +138,12 @@ flowchart LR
 
 ```mermaid
 flowchart LR
-    Fake[Fake-провайдер\nдля разработки и тестов]
-    Real[Real-провайдер\nдля ручной проверки]
-    Contract[Общий контракт]
+    Client[HHClient]
+    DTO[VacancyData]
     Collection[Сервис сбора]
     Upsert[Создать или обновить\nвакансию]
 
-    Fake --> Contract
-    Real --> Contract
-    Contract --> Collection --> Upsert
+    Client --> DTO --> Collection --> Upsert
 ```
 
 **Задачи:** JA-23–JA-28, JA-35–JA-36, JA-41–JA-43, JA-46 и JA-47.
@@ -158,17 +157,6 @@ flowchart LR
 
 **Задачи:** JA-29–JA-32, JA-37–JA-39, JA-44–JA-45 и JA-48–JA-52.
 
-## Что команда делает сейчас
-
-| Приоритет | Задача | Что она открывает |
-| --- | --- | --- |
-| Критично | JA-4: `uv` и пакет из `src` | нормальный запуск backend и CI |
-| Критично | JA-7: настройки | PostgreSQL, HH-режимы, scheduler |
-| Высокий | JA-10: Docker PostgreSQL | модели, миграции и репозитории |
-| Высокий | JA-14: timestamps | модели вакансий, токенов и поисков |
-| Высокий | JA-53: параметры поиска HH.ru | контракт и провайдеры HH.ru |
-| Можно начать сейчас | JA-55: Ruff | единый стиль и базовые проверки перед ревью |
-| Параллельно | JA-19, JA-20, JA-21 | API без ожидания БД |
 
 ## Рабочий процесс команды
 

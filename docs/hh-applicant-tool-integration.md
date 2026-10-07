@@ -19,14 +19,23 @@ UI, автоотклики, работа с резюме и другие выс�
 
 ```text
 CollectionService
-    → HHVacancyProvider
-        → наш адаптер HH.ru
+    → HHClient
+        → компонент авторизованных запросов
             → ApiClient / OAuthClient из hh-applicant-tool
                 → HH.ru API
 ```
 
-Сервисы, API и репозитории не импортируют типы `hh_applicant_tool`. Адаптер
+Сервисы, API и репозитории не импортируют типы `hh_applicant_tool`. Клиент
 преобразует raw-ответ библиотеки во внутренние DTO проекта.
+
+В MVP источник вакансий один — HH.ru. Поэтому отдельный runtime-контракт
+`HHVacancyProvider`, fake-реализация и выбор fake/real по переменной окружения
+не используются. `HHClient` — единый фасад интеграции HH.ru: сейчас он
+предоставляет поиск вакансий, а новые методы API добавляются в него по мере
+необходимости. `CollectionService` получает рабочий `HHClient` через
+dependency приложения. В тестах зависимость подменяется mock, stub или
+`FakeHHClient` с нужным поведением; тестовая реализация не входит в
+production-код.
 
 ## Вызов API и дополнительные endpoint-ы
 
@@ -35,8 +44,8 @@ CollectionService
 адаптером через клиент библиотеки, а не через CLI.
 
 ```text
-наш адаптер → ApiClient.get("/vacancies", params=...) → raw JSON
-    → внутренний DTO → HHVacancyProvider → CollectionService
+HHClient → ApiClient.get("/vacancies", params=...) → raw JSON
+    → VacancyData и HHVacancyPage → CollectionService
 ```
 
 Добавление нового endpoint-а не должно менять сервисы сбора или API-слой. Весь
