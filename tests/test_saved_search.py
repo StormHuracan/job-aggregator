@@ -93,9 +93,7 @@ def test_saved_search_rejects_blank_text(text: str) -> None:
 
 async def test_saved_search_db_rejects_blank_text(session) -> None:
     with pytest.raises(IntegrityError):
-        await session.execute(
-            insert(SavedSearch).values(name="Python", text="   ")
-        )
+        await session.execute(insert(SavedSearch).values(name="Python", text="   "))
 
 
 async def test_saved_search_can_be_saved(session) -> None:
@@ -132,9 +130,7 @@ async def test_saved_search_is_enabled_by_default(session) -> None:
 
 
 async def test_saved_search_server_default_is_enabled(session) -> None:
-    await session.execute(
-        insert(SavedSearch).values(name="Python", text="python")
-    )
+    await session.execute(insert(SavedSearch).values(name="Python", text="python"))
     await session.commit()
 
     is_enabled = await session.scalar(select(SavedSearch.is_enabled))
