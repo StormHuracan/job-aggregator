@@ -1,5 +1,4 @@
 from functools import lru_cache
-from typing import Literal
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -22,7 +21,6 @@ class Settings(BaseSettings):
     hh_client_id: str | None = None
     hh_client_secret: str | None = None
     hh_redirect_uri: str | None = None
-    hh_client_mode: Literal["fake", "real"] = "fake"
     hh_allow_token_refresh: bool = False
 
     collection_default_query: str = "python"
