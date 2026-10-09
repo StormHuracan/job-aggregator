@@ -17,6 +17,9 @@ from hh_applicant_tool.api import ApiClient, OAuthClient
 Не используются `HHApplicantTool`, CLI-операции, собственный storage библиотеки,
 UI, автоотклики, работа с резюме и другие высокоуровневые сценарии.
 
+Зависимость подключена из Git-репозитория через `uv`. Точная ревизия фиксируется
+в `uv.lock`, поэтому `uv sync` воспроизводимо устанавливает проверенную версию.
+
 ```text
 CollectionService
     → HHClient
