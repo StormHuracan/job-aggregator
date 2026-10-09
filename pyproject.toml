@@ -47,4 +47,4 @@ build-backend = "hatchling.build"
 packages = ["src/job_aggregator"]
 
 [tool.uv.sources]
-hh-applicant-tool = { git = "https://github.com/r4r1ty-tech/hh-applicant-tool.git" }
+hh-applicant-tool = { git = "https://github.com/s3rgeym/hh-applicant-tool.git" }
