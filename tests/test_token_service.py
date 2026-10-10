@@ -7,7 +7,7 @@ from sqlalchemy import func, select
 from job_aggregator.db.base import Base
 from job_aggregator.db.models.hh_account_token import HHAccountToken
 from job_aggregator.db.session import create_engine_and_factory
-from job_aggregator.schemas.hh_token import HHAcountTokenData
+from job_aggregator.schemas.hh_token import HHAccountTokenData
 from job_aggregator.services import TokenService
 
 
@@ -23,8 +23,8 @@ async def session():
         await engine.dispose()
 
 
-def _token_data(access: str = "access-1") -> HHAcountTokenData:
-    return HHAcountTokenData(
+def _token_data(access: str = "access-1") -> HHAccountTokenData:
+    return HHAccountTokenData(
         access_token=access,
         refresh_token="refresh-1",
         access_expires_at=datetime.now(UTC) + timedelta(hours=1),
@@ -33,7 +33,7 @@ def _token_data(access: str = "access-1") -> HHAcountTokenData:
 
 def test_hh_account_token_data_rejects_naive_datetime() -> None:
     with pytest.raises(ValidationError):
-        HHAcountTokenData(
+        HHAccountTokenData(
             access_token="a",
             refresh_token="r",
             access_expires_at=datetime(2030, 1, 1, 12, 0, 0),
@@ -44,7 +44,7 @@ def test_hh_account_token_data_normalizes_to_utc() -> None:
     from datetime import timezone
 
     tz = timezone(timedelta(hours=3))
-    data = HHAcountTokenData(
+    data = HHAccountTokenData(
         access_token="a",
         refresh_token="r",
         access_expires_at=datetime(2030, 1, 1, 12, 0, 0, tzinfo=tz),

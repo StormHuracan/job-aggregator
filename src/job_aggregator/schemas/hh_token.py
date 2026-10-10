@@ -3,7 +3,7 @@ from datetime import UTC, datetime
 from pydantic import BaseModel, field_validator
 
 
-class HHAcountTokenData(BaseModel):
+class HHAccountTokenData(BaseModel):
     """Внутренний DTO текущего набора OAuth-токенов HH.ru."""
 
     access_token: str
