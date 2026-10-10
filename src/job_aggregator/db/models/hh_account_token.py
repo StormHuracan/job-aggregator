@@ -1,6 +1,6 @@
 from datetime import UTC, datetime
 
-from sqlalchemy import DateTime, Text
+from sqlalchemy import CheckConstraint, DateTime, Text
 from sqlalchemy.orm import Mapped, mapped_column, validates
 
 from job_aggregator.db.base import Base, TimestampMixin
@@ -11,18 +11,13 @@ class HHAccountToken(TimestampMixin, Base):
 
     __tablename__ = "hh_account_tokens"
 
+    __table_args__ = (CheckConstraint("id = 1", name="ck_hh_account_tokens_singleton"),)
+
     id: Mapped[int] = mapped_column(primary_key=True)
-    access_token: Mapped[str] = mapped_column(
-        Text,
-        nullable=False,
-    )
-    refresh_token: Mapped[str] = mapped_column(
-        Text,
-        nullable=False,
-    )
+    access_token: Mapped[str] = mapped_column(Text, nullable=False)
+    refresh_token: Mapped[str] = mapped_column(Text, nullable=False)
     access_expires_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
+        DateTime(timezone=True), nullable=False
     )
 
     @validates("access_expires_at")
@@ -36,7 +31,6 @@ class HHAccountToken(TimestampMixin, Base):
         return value.astimezone(UTC)
 
     def __repr__(self) -> str:
-        # Значения токенов не должны попадать в логи.
         return (
             f"HHAccountToken(id={self.id!r}, "
             f"access_expires_at={self.access_expires_at!r})"

@@ -3,6 +3,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from pydantic import ValidationError
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 
 from job_aggregator.db.base import Base
 from job_aggregator.db.models.hh_account_token import HHAccountToken
@@ -90,3 +91,27 @@ async def test_save_returns_false_when_unchanged(session) -> None:
     await session.commit()
 
     assert await service.save(tokens) is False
+
+
+async def test_only_one_token_record_can_exist(session) -> None:
+    """CheckConstraint(id = 1) запрещает создать вторую запись."""
+    session.add(
+        HHAccountToken(
+            id=1,
+            access_token="a",
+            refresh_token="r",
+            access_expires_at=datetime.now(UTC),
+        )
+    )
+    await session.commit()
+
+    session.add(
+        HHAccountToken(
+            id=2,
+            access_token="b",
+            refresh_token="r2",
+            access_expires_at=datetime.now(UTC),
+        )
+    )
+    with pytest.raises(IntegrityError):
+        await session.commit()
