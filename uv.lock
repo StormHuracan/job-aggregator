@@ -544,13 +544,17 @@ wheels = [
 [[package]]
 name = "hh-applicant-tool"
 version = "2.0.1"
-source = { git = "https://github.com/s3rgeym/hh-applicant-tool.git#0b7422d865e791277c3bc4490594238b802bec52" }
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "brotli" },
     { name = "cryptography" },
     { name = "pillow" },
     { name = "requests", extra = ["socks"] },
     { name = "tomli-w" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/3a/4f/66ac66ebf42cd7e1003485dca43254231c4cf656c60236a2e79853f6f407/hh_applicant_tool-2.0.1.tar.gz", hash = "sha256:4e87dc43891b4bc1bde0eedadc9035fc12be7306eedec769876aceb99c8314f0", size = 149299, upload-time = "2026-10-09T12:40:12.898Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/db/12/4268c3b34cae4f20961857e39e57908c0d6194b4a82fcdc2acbcb1774a1c/hh_applicant_tool-2.0.1-py3-none-any.whl", hash = "sha256:b75af057133369db44c7d03444f8050903f3c4b3443e6329bbd6138790a95dd4", size = 163475, upload-time = "2026-10-09T12:40:13.984Z" },
 ]
 
 [[package]]
@@ -653,7 +657,7 @@ requires-dist = [
     { name = "apscheduler", specifier = ">=3.11.0" },
     { name = "asyncpg", specifier = ">=0.30.0" },
     { name = "fastapi", specifier = ">=0.118.0" },
-    { name = "hh-applicant-tool", git = "https://github.com/s3rgeym/hh-applicant-tool.git" },
+    { name = "hh-applicant-tool", specifier = "==2.0.1" },
     { name = "pydantic-settings", specifier = ">=2.10.0" },
     { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0.0" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.37.0" },
