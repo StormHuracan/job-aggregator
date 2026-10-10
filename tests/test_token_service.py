@@ -1,4 +1,4 @@
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, timedelta, timezone
 
 import pytest
 from pydantic import ValidationError
@@ -42,8 +42,6 @@ def test_hh_account_token_data_rejects_naive_datetime() -> None:
 
 
 def test_hh_account_token_data_normalizes_to_utc() -> None:
-    from datetime import timezone
-
     tz = timezone(timedelta(hours=3))
     data = HHAccountTokenData(
         access_token="a",
@@ -94,10 +92,9 @@ async def test_save_returns_false_when_unchanged(session) -> None:
 
 
 async def test_only_one_token_record_can_exist(session) -> None:
-    """CheckConstraint(id = 1) запрещает создать вторую запись."""
+    """UNIQUE(singleton) запрещает создать вторую запись с is_enabled=True."""
     session.add(
         HHAccountToken(
-            id=1,
             access_token="a",
             refresh_token="r",
             access_expires_at=datetime.now(UTC),
@@ -107,7 +104,6 @@ async def test_only_one_token_record_can_exist(session) -> None:
 
     session.add(
         HHAccountToken(
-            id=2,
             access_token="b",
             refresh_token="r2",
             access_expires_at=datetime.now(UTC),
@@ -115,3 +111,37 @@ async def test_only_one_token_record_can_exist(session) -> None:
     )
     with pytest.raises(IntegrityError):
         await session.commit()
+
+
+async def test_save_after_rollback_still_single_record(session) -> None:
+    """После rollback первой попытки повторный save работает, дубликатов нет."""
+    service = TokenService(session)
+    await service.save(_token_data(access="first"))
+    await session.rollback()
+
+    assert await service.save(_token_data(access="second")) is True
+    await session.commit()
+
+    count = await session.scalar(select(func.count()).select_from(HHAccountToken))
+    assert count == 1
+
+    current = await service.get_current()
+    assert current is not None
+    assert current.access_token == "second"
+
+
+async def test_save_after_commit_then_rollback(session) -> None:
+    """После успешного save + rollback повторный save не падает."""
+    service = TokenService(session)
+    await service.save(_token_data(access="v1"))
+    await session.commit()
+
+    await service.save(_token_data(access="v2"))
+    await session.rollback()
+
+    assert await service.save(_token_data(access="v3")) is True
+    await session.commit()
+
+    current = await service.get_current()
+    assert current is not None
+    assert current.access_token == "v3"

@@ -1,19 +1,28 @@
 from datetime import UTC, datetime
 
-from sqlalchemy import CheckConstraint, DateTime, Text
+from sqlalchemy import Boolean, DateTime, Text, UniqueConstraint, true
 from sqlalchemy.orm import Mapped, mapped_column, validates
 
 from job_aggregator.db.base import Base, TimestampMixin
 
 
 class HHAccountToken(TimestampMixin, Base):
-    """ORM модель OAuth-токенов HH.ru. Только для persistence-слоя и интеграции."""
+    """ORM модель OAuth-токенов HH.ru. Поддерживает только одну актуальную запись."""
 
     __tablename__ = "hh_account_tokens"
 
-    __table_args__ = (CheckConstraint("id = 1", name="ck_hh_account_tokens_singleton"),)
+    __table_args__ = (
+        UniqueConstraint("singleton", name="uq_hh_account_tokens_singleton"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    # Всегда True — гарантирует единственность активного набора через unique.
+    singleton: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=True,
+        server_default=true(),
+    )
     access_token: Mapped[str] = mapped_column(Text, nullable=False)
     refresh_token: Mapped[str] = mapped_column(Text, nullable=False)
     access_expires_at: Mapped[datetime] = mapped_column(

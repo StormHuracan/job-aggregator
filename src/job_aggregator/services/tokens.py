@@ -11,6 +11,10 @@ class TokenService:
     Поддерживает один актуальный набор: сохранение обновляет существующую
     запись, а не создаёт дубликат. Не выполняет commit — транзакцию
     завершает вызывающая сторона.
+
+    Конкурентная защита: SELECT ... FOR UPDATE блокирует строку до конца
+    транзакции, поэтому два параллельных save() сериализуются. UNIQUE(singleton)
+    гарантирует, что при гонке двух первых вставок сохранится только одна.
     """
 
     def __init__(self, session: AsyncSession) -> None:
@@ -19,7 +23,10 @@ class TokenService:
     async def get_current(self) -> HHAccountTokenData | None:
         """Вернуть текущий набор токенов или None, если он не сохранён."""
         record = await self._session.scalar(
-            select(HHAccountToken).order_by(HHAccountToken.id).limit(1)
+            select(HHAccountToken)
+            .order_by(HHAccountToken.id)
+            .limit(1)
+            .with_for_update()
         )
         if record is None:
             return None
@@ -36,7 +43,10 @@ class TokenService:
         сохранённый набор полностью совпадает с переданным.
         """
         record = await self._session.scalar(
-            select(HHAccountToken).order_by(HHAccountToken.id).limit(1)
+            select(HHAccountToken)
+            .order_by(HHAccountToken.id)
+            .limit(1)
+            .with_for_update()
         )
 
         if record is None:
