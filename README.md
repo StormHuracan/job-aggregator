@@ -159,6 +159,10 @@ curl http://127.0.0.1:8000/health
 {"status": "ok"}
 ```
 
+## Тесты
+
+Правила организации и запуска тестов: [tests/README.md](tests/README.md).
+
 ## Миграции базы данных
 
 Схема PostgreSQL изменяется через Alembic. Адрес базы берётся из DATABASE_URL, как и у приложения.
