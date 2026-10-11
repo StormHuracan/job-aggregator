@@ -1,9 +1,29 @@
+from collections.abc import Iterator
 from datetime import UTC
 
 import pytest
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 from sqlalchemy import event
 
+from job_aggregator.api.router import api_router
 from job_aggregator.db.models.hh_account_token import HHAccountToken
+
+
+@pytest.fixture
+def client() -> Iterator[TestClient]:
+    """Выдаёт клиент настоящих роутеров без production lifespan и БД.
+
+    Зависимости подменяются через client.app.dependency_overrides. Каждый тест
+    получает отдельное приложение. Запуск приложения и работу хранилища эта
+    fixture не проверяет — для них нужны отдельные интеграционные тесты.
+    """
+    # Production lifespan подключается к БД независимо от dependency_overrides.
+    app = FastAPI()
+    app.include_router(api_router)
+
+    with TestClient(app) as test_client:
+        yield test_client
 
 
 @pytest.fixture(autouse=True)
