@@ -23,7 +23,7 @@ def client():
 
 def _install_fake_token_service(tokens: HHAccountTokenData | None) -> MagicMock:
     """Подменяет TokenService моком с заданным результатом get_current()."""
-    fake = MagicMock()                       # без spec — см. объяснение ниже
+    fake = MagicMock()  # без spec — см. объяснение ниже
     fake.get_current = AsyncMock(return_value=tokens)
     fake.save = AsyncMock()
     app.dependency_overrides[get_token_service] = lambda: fake
@@ -40,6 +40,7 @@ def _make_tokens(access_expires_at: datetime) -> HHAccountTokenData:
 
 # ---------- 1. Токенов нет ----------
 
+
 def test_status_without_tokens(client):
     fake = _install_fake_token_service(None)
 
@@ -52,6 +53,7 @@ def test_status_without_tokens(client):
 
 
 # ---------- 2. Действующий токен ----------
+
 
 def test_status_with_valid_token(client):
     expiry = datetime.now(timezone.utc) + timedelta(hours=1)
@@ -74,6 +76,7 @@ def test_status_with_valid_token(client):
 
 # ---------- 3. Истёкший токен ----------
 
+
 def test_status_with_expired_token(client):
     expiry = datetime.now(timezone.utc) - timedelta(hours=1)
     fake = _install_fake_token_service(_make_tokens(expiry))
@@ -89,10 +92,11 @@ def test_status_with_expired_token(client):
     assert parsed < datetime.now(timezone.utc)
 
     fake.get_current.assert_awaited_once()
-    fake.save.assert_not_awaited()   # ← refresh/перезапись не выполняются
+    fake.save.assert_not_awaited()  # ← refresh/перезапись не выполняются
 
 
 # ---------- 4. В ответе нет секретов и лишних полей ----------
+
 
 def test_status_response_contains_no_secrets(client):
     expiry = datetime.now(timezone.utc) + timedelta(minutes=5)
@@ -108,6 +112,7 @@ def test_status_response_contains_no_secrets(client):
 
 
 # ---------- 5. Endpoint не пишет в хранилище и не запускает сбор ----------
+
 
 def test_status_does_not_touch_hh_or_write(client):
     expiry = datetime.now(timezone.utc) - timedelta(days=1)

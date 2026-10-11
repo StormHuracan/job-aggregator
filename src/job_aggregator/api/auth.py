@@ -7,11 +7,10 @@ from job_aggregator.services.tokens import TokenService
 router = APIRouter(prefix="/auth/hh", tags=["auth"])
 
 
-
 @router.get("/status", response_model=HHAuthStatusResponse)
 async def hh_status(
     token_service: TokenService = Depends(get_token_service),
-) -> HHAuthStatusResponse:      
+) -> HHAuthStatusResponse:
     tokens = await token_service.get_current()
     if tokens is None:
         return HHAuthStatusResponse(connected=False, access_expires_at=None)
