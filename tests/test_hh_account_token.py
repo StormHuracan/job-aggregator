@@ -38,6 +38,7 @@ def test_hh_account_token_inherits_base_and_timestamp_mixin() -> None:
 def test_hh_account_token_model_structure() -> None:
     expected_fields = {
         "id",
+        "singleton",
         "access_token",
         "refresh_token",
         "access_expires_at",
