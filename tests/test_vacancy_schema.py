@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
 from types import SimpleNamespace
 
-from job_aggregator.schemas.vacancy import VacancyResponse
+from job_aggregator.schemas.vacancy import VacancyListQuery, VacancyResponse
 
 
 def test_vacancy_response_from_orm() -> None:
@@ -87,3 +87,37 @@ def test_vacancy_response_excludes_internal_fields() -> None:
     response = VacancyResponse.model_validate(vacancy)
     assert "raw_data" not in response.model_dump()
     assert "hh_access_token" not in response.model_dump()
+
+
+def test_without_optional_fields() -> None:
+    query = VacancyListQuery(limit=5, offset=6)
+    assert query.limit == 5
+    assert query.offset == 6
+
+
+def test_valid_filters_and_pagination() -> None:
+    query = VacancyListQuery(
+        company="Google",
+        text="Python Developer",
+        area="1",
+        salary_from=100000,
+        salary_to=200000,
+        limit=50,
+        offset=10,
+    )
+    assert query.company == "Google"
+    assert query.text == "Python Developer"
+    assert query.area == "1"
+    assert query.salary_from == 100000
+    assert query.salary_to == 200000
+    assert query.limit == 50
+    assert query.offset == 10
+
+
+def test_invalid_filters() -> None:
+    query = VacancyListQuery(
+        limit=0,
+        offset=-2,
+    )
+    assert query.limit == 0
+    assert query.offset == -2
