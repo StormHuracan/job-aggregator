@@ -16,8 +16,8 @@ ENDPOINT = "/auth/hh/status"
 
 @pytest.fixture
 def client():
-    with TestClient(app) as c:
-        yield c
+    c = TestClient(app)
+    yield c
     app.dependency_overrides.clear()
 
 
