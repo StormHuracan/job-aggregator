@@ -100,4 +100,3 @@ def test_vacancy_data_rejects_non_hh_source() -> None:
             published_at=None,
             raw_data=None,
         )
-
