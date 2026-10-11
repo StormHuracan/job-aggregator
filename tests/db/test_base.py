@@ -1,13 +1,19 @@
 import asyncio
+from collections.abc import AsyncIterator
 
 import pytest
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 from job_aggregator.db.base import Base, TimestampMixin, _utc_now
 from job_aggregator.db.session import create_engine_and_factory
 
 
-class DummyModel(TimestampMixin, Base):
+class DummyBase(DeclarativeBase):
+    pass
+
+
+class DummyModel(TimestampMixin, DummyBase):
     __tablename__ = "test_dummy"
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -15,11 +21,11 @@ class DummyModel(TimestampMixin, Base):
 
 
 @pytest.fixture
-async def session():
+async def session() -> AsyncIterator[AsyncSession]:
     engine, factory = create_engine_and_factory("sqlite+aiosqlite:///:memory:")
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
     try:
+        async with engine.begin() as conn:
+            await conn.run_sync(DummyBase.metadata.create_all)
         async with factory() as s:
             yield s
     finally:
@@ -30,6 +36,10 @@ def test_utc_now_is_timezone_aware() -> None:
     now = _utc_now()
     assert now.tzinfo is not None
     assert now.utcoffset().total_seconds() == 0
+
+
+def test_dummy_model_does_not_pollute_application_metadata() -> None:
+    assert "test_dummy" not in Base.metadata.tables
 
 
 async def test_timestamps_filled_on_insert(session) -> None:

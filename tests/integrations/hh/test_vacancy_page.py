@@ -1,28 +1,14 @@
-from datetime import UTC, datetime
-
 import pytest
 from pydantic import ValidationError
 
 from job_aggregator.integrations.hh import HHVacancyPage
 from job_aggregator.schemas.vacancy import VacancyData
+from tests.factories import make_vacancy_data
 
 
 @pytest.fixture
 def vacancy() -> VacancyData:
-    return VacancyData(
-        source="hh",
-        external_id="123",
-        title="Python developer",
-        company_name="Example",
-        area_name=None,
-        salary_from=None,
-        salary_to=None,
-        salary_currency=None,
-        description=None,
-        source_url="https://hh.ru/vacancy/123",
-        published_at=datetime(2026, 10, 11, tzinfo=UTC),
-        raw_data=None,
-    )
+    return make_vacancy_data()
 
 
 def test_empty_page() -> None:

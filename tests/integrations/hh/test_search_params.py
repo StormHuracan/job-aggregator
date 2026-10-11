@@ -1,12 +1,12 @@
 import os
 import subprocess
 import sys
-from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
 
 from job_aggregator.integrations.hh import HHVacancySearchParams
+from tests.paths import PROJECT_ROOT
 
 
 def test_search_params_defaults() -> None:
@@ -65,7 +65,7 @@ def test_hh_package_does_not_import_heavy_dependencies() -> None:
         "loaded = [m for m in forbidden if m in sys.modules]\n"
         "assert not loaded, loaded\n"
     )
-    src_dir = Path(__file__).resolve().parents[1] / "src"
+    src_dir = PROJECT_ROOT / "src"
     env = {**os.environ, "PYTHONPATH": str(src_dir)}
     result = subprocess.run(
         [sys.executable, "-c", code], capture_output=True, text=True, env=env

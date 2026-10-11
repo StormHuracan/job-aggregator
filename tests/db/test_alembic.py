@@ -1,7 +1,8 @@
 import os
 import subprocess
 import sys
-from pathlib import Path
+
+from tests.paths import PROJECT_ROOT
 
 
 def test_offline_migrations_accept_percent_encoded_password() -> None:
@@ -10,7 +11,7 @@ def test_offline_migrations_accept_percent_encoded_password() -> None:
 
     result = subprocess.run(
         [sys.executable, "-m", "alembic", "upgrade", "head", "--sql"],
-        cwd=Path(__file__).resolve().parents[1],
+        cwd=PROJECT_ROOT,
         env=env,
         capture_output=True,
         text=True,
