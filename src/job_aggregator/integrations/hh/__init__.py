@@ -1,3 +1,4 @@
-from job_aggregator.integrations.hh.dto import HHVacancySearchParams
-
-__all__ = ["HHVacancySearchParams"]
+from job_aggregator.integrations.hh.dto import HHVacancyPage as HHVacancyPage
+from job_aggregator.integrations.hh.dto import (
+    HHVacancySearchParams as HHVacancySearchParams,
+)
