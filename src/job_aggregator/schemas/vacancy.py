@@ -40,8 +40,9 @@ class VacancyData:
     raw_data: dict[str, Any] | None
 
     def __post_init__(self) -> None:
-        if self.source != "hh":
-            raise ValueError("Источник вакансии должен быть 'hh'")
-
-        if self.published_at is not None and self.published_at.tzinfo is None:
-            raise ValueError("published_at должен быть timezone-aware")
+        if self.published_at is not None:
+            if (
+                self.published_at.tzinfo is None
+                or self.published_at.utcoffset() is None
+            ):
+                raise ValueError("published_at должен быть timezone-aware")

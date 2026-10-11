@@ -82,21 +82,3 @@ def test_vacancy_data_rejects_naive_published_at() -> None:
             published_at=naive_datetime,
             raw_data=None,
         )
-
-
-def test_vacancy_data_rejects_non_hh_source() -> None:
-    with pytest.raises(ValueError, match="hh"):
-        VacancyData(
-            source="linkedin",
-            external_id="123",
-            title="Python Developer",
-            company_name="Example Company",
-            area_name=None,
-            salary_from=None,
-            salary_to=None,
-            salary_currency=None,
-            description=None,
-            source_url="https://example.com/vacancy/123",
-            published_at=None,
-            raw_data=None,
-        )
