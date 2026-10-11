@@ -1,24 +1,10 @@
 import pytest
 from sqlalchemy import Boolean, DateTime, insert, select
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from job_aggregator.db.base import Base, TimestampMixin
 from job_aggregator.db.models.saved_search import SavedSearch
-from job_aggregator.db.session import create_engine_and_factory
-
-
-@pytest.fixture
-async def session():
-    engine, factory = create_engine_and_factory("sqlite+aiosqlite:///:memory:")
-
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-
-    try:
-        async with factory() as session:
-            yield session
-    finally:
-        await engine.dispose()
 
 
 def test_saved_search_table_name() -> None:
@@ -91,17 +77,19 @@ def test_saved_search_rejects_blank_text(text: str) -> None:
         SavedSearch(name="Python", text=text)
 
 
-async def test_saved_search_db_rejects_blank_text(session) -> None:
+async def test_saved_search_db_rejects_blank_text(sqlite_session: AsyncSession) -> None:
     with pytest.raises(IntegrityError):
-        await session.execute(insert(SavedSearch).values(name="Python", text="   "))
+        await sqlite_session.execute(
+            insert(SavedSearch).values(name="Python", text="   ")
+        )
 
 
-async def test_saved_search_can_be_saved(session) -> None:
+async def test_saved_search_can_be_saved(sqlite_session: AsyncSession) -> None:
     search = SavedSearch(name="Python Москва", text="python", area="1")
 
-    session.add(search)
-    await session.commit()
-    await session.refresh(search)
+    sqlite_session.add(search)
+    await sqlite_session.commit()
+    await sqlite_session.refresh(search)
 
     assert search.id is not None
     assert search.name == "Python Москва"
@@ -109,51 +97,57 @@ async def test_saved_search_can_be_saved(session) -> None:
     assert search.area == "1"
 
 
-async def test_saved_search_area_can_be_none(session) -> None:
+async def test_saved_search_area_can_be_none(sqlite_session: AsyncSession) -> None:
     search = SavedSearch(name="Python", text="python")
 
-    session.add(search)
-    await session.commit()
-    await session.refresh(search)
+    sqlite_session.add(search)
+    await sqlite_session.commit()
+    await sqlite_session.refresh(search)
 
     assert search.area is None
 
 
-async def test_saved_search_is_enabled_by_default(session) -> None:
+async def test_saved_search_is_enabled_by_default(sqlite_session: AsyncSession) -> None:
     search = SavedSearch(name="Python", text="python")
 
-    session.add(search)
-    await session.commit()
-    await session.refresh(search)
+    sqlite_session.add(search)
+    await sqlite_session.commit()
+    await sqlite_session.refresh(search)
 
     assert search.is_enabled is True
 
 
-async def test_saved_search_server_default_is_enabled(session) -> None:
-    await session.execute(insert(SavedSearch).values(name="Python", text="python"))
-    await session.commit()
+async def test_saved_search_server_default_is_enabled(
+    sqlite_session: AsyncSession,
+) -> None:
+    await sqlite_session.execute(
+        insert(SavedSearch).values(name="Python", text="python")
+    )
+    await sqlite_session.commit()
 
-    is_enabled = await session.scalar(select(SavedSearch.is_enabled))
+    is_enabled = await sqlite_session.scalar(select(SavedSearch.is_enabled))
 
     assert is_enabled is True
 
 
-async def test_saved_search_can_be_disabled(session) -> None:
+async def test_saved_search_can_be_disabled(sqlite_session: AsyncSession) -> None:
     search = SavedSearch(name="Python", text="python", is_enabled=False)
 
-    session.add(search)
-    await session.commit()
-    await session.refresh(search)
+    sqlite_session.add(search)
+    await sqlite_session.commit()
+    await sqlite_session.refresh(search)
 
     assert search.is_enabled is False
 
 
-async def test_saved_search_timestamps_filled_on_insert(session) -> None:
+async def test_saved_search_timestamps_filled_on_insert(
+    sqlite_session: AsyncSession,
+) -> None:
     search = SavedSearch(name="Python", text="python")
 
-    session.add(search)
-    await session.commit()
-    await session.refresh(search)
+    sqlite_session.add(search)
+    await sqlite_session.commit()
+    await sqlite_session.refresh(search)
 
     assert search.created_at is not None
     assert search.updated_at is not None
@@ -161,19 +155,21 @@ async def test_saved_search_timestamps_filled_on_insert(session) -> None:
 
 @pytest.mark.parametrize("missing_field", ["name", "text"])
 async def test_saved_search_required_fields_enforced(
-    session, missing_field: str
+    sqlite_session: AsyncSession, missing_field: str
 ) -> None:
     fields = {"name": "Python", "text": "python"}
     del fields[missing_field]
 
-    session.add(SavedSearch(**fields))
+    sqlite_session.add(SavedSearch(**fields))
 
     with pytest.raises(IntegrityError):
-        await session.commit()
+        await sqlite_session.commit()
 
 
-async def test_saved_search_is_enabled_cannot_be_null(session) -> None:
+async def test_saved_search_is_enabled_cannot_be_null(
+    sqlite_session: AsyncSession,
+) -> None:
     with pytest.raises(IntegrityError):
-        await session.execute(
+        await sqlite_session.execute(
             insert(SavedSearch).values(name="Python", text="python", is_enabled=None)
         )

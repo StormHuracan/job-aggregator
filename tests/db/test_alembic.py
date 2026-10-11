@@ -1,6 +1,7 @@
 import os
 import subprocess
 import sys
+
 from tests.paths import PROJECT_ROOT
 
 
