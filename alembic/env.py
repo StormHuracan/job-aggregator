@@ -17,7 +17,8 @@ from job_aggregator.db.models import (  # noqa: F401
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
 config = context.config
-config.set_main_option("sqlalchemy.url", get_settings().database_url)
+# ConfigParser требует экранировать % в URL с закодированными символами.
+config.set_main_option("sqlalchemy.url", get_settings().database_url.replace("%", "%%"))
 
 
 # Interpret the config file for Python logging.
