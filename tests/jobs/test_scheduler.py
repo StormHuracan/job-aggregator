@@ -1,3 +1,4 @@
+import asyncio
 from collections.abc import Iterator
 from datetime import timedelta
 
@@ -70,3 +71,24 @@ def test_scheduler_is_not_created_when_disabled(
 
     with TestClient(app):
         assert app.state.scheduler is None
+
+
+async def test_async_job_runs_in_app_event_loop() -> None:
+    executed = asyncio.Event()
+    test_loop = asyncio.get_running_loop()
+    job_loops: list[asyncio.AbstractEventLoop] = []
+
+    async def set_flag_job() -> None:
+        job_loops.append(asyncio.get_running_loop())
+        executed.set()
+
+    scheduler = create_scheduler(Settings())
+    scheduler.start()
+
+    try:
+        scheduler.add_job(set_flag_job)
+        await asyncio.wait_for(executed.wait(), timeout=1)
+    finally:
+        scheduler.shutdown()
+
+    assert job_loops == [test_loop]
