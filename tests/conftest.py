@@ -1,20 +1,24 @@
-import pytest
-from httpx import AsyncClient, ASGITransport
 from collections.abc import AsyncIterator, Iterator
 from datetime import UTC
+
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from httpx import ASGITransport, AsyncClient
 from sqlalchemy import event
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
+
 from job_aggregator.api.router import api_router
 from job_aggregator.main import create_app
+
 
 @pytest.fixture
 def app():
     test_app = create_app()
     yield test_app
     test_app.dependency_overrides.clear()
+
 
 @pytest.fixture
 def client() -> Iterator[TestClient]:
@@ -31,13 +35,12 @@ def client() -> Iterator[TestClient]:
     with TestClient(app) as test_client:
         yield test_client
 
+
 @pytest.fixture
 async def async_client(app):
     transport = ASGITransport(app)
-    async with  AsyncClient(transport=transport, base_url= "http://test") as client:
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
         yield client
-
-
 
 
 @pytest.fixture
