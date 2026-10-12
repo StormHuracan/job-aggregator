@@ -3,26 +3,12 @@ from datetime import UTC, datetime, timedelta, timezone
 import pytest
 from sqlalchemy import DateTime
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from job_aggregator.db.base import Base, TimestampMixin
 from job_aggregator.db.models.hh_account_token import HHAccountToken
-from job_aggregator.db.session import create_engine_and_factory
 
 EXPIRES_AT = datetime(2026, 10, 6, 12, 0, tzinfo=UTC)
-
-
-@pytest.fixture
-async def session():
-    engine, factory = create_engine_and_factory("sqlite+aiosqlite:///:memory:")
-
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-
-    try:
-        async with factory() as session:
-            yield session
-    finally:
-        await engine.dispose()
 
 
 def test_hh_account_token_table_name() -> None:
@@ -120,32 +106,34 @@ def test_hh_account_token_repr_hides_token_values() -> None:
     assert "secret-refresh-token" not in text
 
 
-async def test_hh_account_token_can_be_saved(session) -> None:
+async def test_hh_account_token_can_be_saved(sqlite_session: AsyncSession) -> None:
     token = HHAccountToken(
         access_token="access",
         refresh_token="refresh",
         access_expires_at=EXPIRES_AT,
     )
 
-    session.add(token)
-    await session.commit()
-    await session.refresh(token)
+    sqlite_session.add(token)
+    await sqlite_session.commit()
+    await sqlite_session.refresh(token)
 
     assert token.id is not None
     assert token.access_token == "access"
     assert token.refresh_token == "refresh"
 
 
-async def test_hh_account_token_timestamps_filled_on_insert(session) -> None:
+async def test_hh_account_token_timestamps_filled_on_insert(
+    sqlite_session: AsyncSession,
+) -> None:
     token = HHAccountToken(
         access_token="access",
         refresh_token="refresh",
         access_expires_at=EXPIRES_AT,
     )
 
-    session.add(token)
-    await session.commit()
-    await session.refresh(token)
+    sqlite_session.add(token)
+    await sqlite_session.commit()
+    await sqlite_session.refresh(token)
 
     assert token.created_at is not None
     assert token.updated_at is not None
@@ -155,7 +143,7 @@ async def test_hh_account_token_timestamps_filled_on_insert(session) -> None:
     "missing_field", ["access_token", "refresh_token", "access_expires_at"]
 )
 async def test_hh_account_token_required_fields_enforced(
-    session, missing_field: str
+    sqlite_session: AsyncSession, missing_field: str
 ) -> None:
     fields = {
         "access_token": "access",
@@ -164,7 +152,7 @@ async def test_hh_account_token_required_fields_enforced(
     }
     del fields[missing_field]
 
-    session.add(HHAccountToken(**fields))
+    sqlite_session.add(HHAccountToken(**fields))
 
     with pytest.raises(IntegrityError):
-        await session.commit()
+        await sqlite_session.commit()
