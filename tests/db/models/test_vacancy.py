@@ -1,23 +1,8 @@
 import pytest
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from job_aggregator.db.base import Base
 from job_aggregator.db.models.vacancy import Vacancy
-from job_aggregator.db.session import create_engine_and_factory
-
-
-@pytest.fixture
-async def session():
-    engine, factory = create_engine_and_factory("sqlite+aiosqlite:///:memory:")
-
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-
-    try:
-        async with factory() as session:
-            yield session
-    finally:
-        await engine.dispose()
 
 
 def test_vacancy_model_structure() -> None:
@@ -68,7 +53,7 @@ def test_create_vacancy() -> None:
     assert vacancy.raw_data is None
 
 
-async def test_vacancy_can_be_saved(session) -> None:
+async def test_vacancy_can_be_saved(sqlite_session: AsyncSession) -> None:
     vacancy = Vacancy(
         source="hh",
         external_id="123456",
@@ -77,16 +62,18 @@ async def test_vacancy_can_be_saved(session) -> None:
         source_url="https://hh.ru/vacancy/123456",
     )
 
-    session.add(vacancy)
-    await session.commit()
-    await session.refresh(vacancy)
+    sqlite_session.add(vacancy)
+    await sqlite_session.commit()
+    await sqlite_session.refresh(vacancy)
 
     assert vacancy.id is not None
     assert vacancy.created_at is not None
     assert vacancy.updated_at is not None
 
 
-async def test_vacancy_source_and_external_id_must_be_unique(session) -> None:
+async def test_vacancy_source_and_external_id_must_be_unique(
+    sqlite_session: AsyncSession,
+) -> None:
     vacancy_1 = Vacancy(
         source="hh",
         external_id="123456",
@@ -103,13 +90,15 @@ async def test_vacancy_source_and_external_id_must_be_unique(session) -> None:
         source_url="https://hh.ru/vacancy/123456",
     )
 
-    session.add_all([vacancy_1, vacancy_2])
+    sqlite_session.add_all([vacancy_1, vacancy_2])
 
     with pytest.raises(IntegrityError):
-        await session.commit()
+        await sqlite_session.commit()
 
 
-async def test_same_external_id_allowed_for_different_sources(session) -> None:
+async def test_same_external_id_allowed_for_different_sources(
+    sqlite_session: AsyncSession,
+) -> None:
     vacancy_1 = Vacancy(
         source="hh",
         external_id="123456",
@@ -126,8 +115,8 @@ async def test_same_external_id_allowed_for_different_sources(session) -> None:
         source_url="https://linkedin.com/jobs/123456",
     )
 
-    session.add_all([vacancy_1, vacancy_2])
-    await session.commit()
+    sqlite_session.add_all([vacancy_1, vacancy_2])
+    await sqlite_session.commit()
 
     assert vacancy_1.id is not None
     assert vacancy_2.id is not None
