@@ -33,27 +33,21 @@ def _data(**overrides: Any) -> VacancyData:
 async def test_concurrent_first_insert_preserves_outer_changes(
     pg_session_factory: async_sessionmaker[AsyncSession],
 ) -> None:
-    """Две сессии одновременно вставляют одну пару; savepoint не откатывает
-    изменения, сделанные вызывающим кодом в той же транзакции.
+    """Две сессии одновременно вставляют одну пару vacancy.
 
-    Сессия s1 перед upsert'ом добавляет SavedSearch. Один из двух upsert'ов
-    получит UNIQUE-конфликт на PostgreSQL, поймает IntegrityError, откатит
-    только savepoint и обновит существующую запись. SavedSearch в s1 должен
-    пережить этот откат и закоммититься вместе с внешней транзакцией.
+    Каждая сессия перед upsert() добавляет свой SavedSearch. Один из двух
+    upsert'ов получит UNIQUE-конфликт на PostgreSQL, поймает IntegrityError
+    и откатит только savepoint. Ни один из маркеров SavedSearch не должен
+    потеряться, независимо от того, какая сессия проиграла гонку.
     """
     barrier = asyncio.Barrier(2)
-    # Первая сессия, дошедшая до barrier, положит в очередь свой "маркер".
-    outer_marker_setter: list[str] = []
 
     async def worker(title: str) -> None:
         async with pg_session_factory() as session:
+            session.add(SavedSearch(name=f"marker-{title}", text="python"))
+            await session.flush()
+
             repo = VacancyRepository(session)
-            if not outer_marker_setter:
-                # Только одна сессия кладёт SavedSearch — вторую
-                # оставляем чистой, чтобы конфликт произошёл именно на vacancy.
-                outer_marker_setter.append(title)
-                session.add(SavedSearch(name=f"marker-{title}", text="python"))
-                await session.flush()
             await barrier.wait()
             await repo.upsert(_data(title=title))
             await session.commit()
@@ -73,7 +67,8 @@ async def test_concurrent_first_insert_preserves_outer_changes(
         saved_count = await session.scalar(
             select(func.count()).select_from(SavedSearch)
         )
-        assert saved_count == 1, (
-            "SavedSearch, добавленный вызывающим кодом до upsert(), "
-            "должен сохраниться несмотря на UNIQUE-конфликт"
+        assert saved_count == 2, (
+            "Оба SavedSearch-маркера должны сохраниться: откат "
+            "UNIQUE-конфликта в одной сессии не должен отменять изменения "
+            "другой сессии"
         )
