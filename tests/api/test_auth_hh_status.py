@@ -1,6 +1,7 @@
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
 
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from job_aggregator.api.dependencies import get_token_service
@@ -23,8 +24,10 @@ def _install_fake_token_service(
     return fake
 
 
-def test_status_without_tokens(client: TestClient) -> None:
+def test_status_without_tokens(app: FastAPI, client: TestClient) -> None:
+    assert client.app is app
     fake = _install_fake_token_service(client, None)
+    assert get_token_service in app.dependency_overrides
 
     response = client.get(ENDPOINT)
 
