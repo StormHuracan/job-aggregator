@@ -1,6 +1,9 @@
 from datetime import UTC, datetime
 from types import SimpleNamespace
 
+import pytest
+from pydantic import ValidationError
+
 from job_aggregator.schemas.vacancy import VacancyListQuery, VacancyResponse
 
 
@@ -115,9 +118,8 @@ def test_valid_filters_and_pagination() -> None:
 
 
 def test_invalid_filters() -> None:
-    query = VacancyListQuery(
-        limit=0,
-        offset=-2,
-    )
-    assert query.limit == 0
-    assert query.offset == -2
+    with pytest.raises(ValidationError):
+        VacancyListQuery(
+            limit=0,
+            offset=-2,
+        )
