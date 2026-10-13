@@ -47,3 +47,13 @@ uv run pytest tests/integrations/hh -q
 Текущий набор не требует запущенной PostgreSQL. Тесты, которые проверяют реальные
 миграции и PostgreSQL, должны явно использовать отдельную тестовую БД и
 документировать необходимые настройки; рабочую БД разработчика не используем.
+
+
+## PostgreSQL-тесты
+
+Тесты, которым нужен реальный PostgreSQL, используют fixture `pg_session_factory`.
+Они запускаются только если задана переменная окружения `TEST_DATABASE_URL`:
+
+```bash
+docker exec -it job-aggregator-db psql -U postgres -c "CREATE DATABASE job_aggregator_test;"
+TEST_DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5432/job_aggregator_test uv run pytest tests/db -v
