@@ -9,19 +9,18 @@ from sqlalchemy import event
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
-from job_aggregator.api.router import api_router
 from job_aggregator.main import create_app
 
 
 @pytest.fixture
-def app():
+def app() -> Iterator[FastAPI]:
     test_app = create_app()
     yield test_app
     test_app.dependency_overrides.clear()
 
 
 @pytest.fixture
-def client() -> Iterator[TestClient]:
+def client(app: FastAPI) -> Iterator[TestClient]:
     """Выдаёт клиент настоящих роутеров без production lifespan.
 
     Зависимости подменяются через client.app.dependency_overrides. Каждый тест
@@ -29,15 +28,12 @@ def client() -> Iterator[TestClient]:
     не проверяет. Для API-тестов без БД необходимо подменить зависимости сервисов.
     """
     # Production lifespan подключается к БД независимо от dependency_overrides.
-    app = FastAPI()
-    app.include_router(api_router)
-
-    with TestClient(app) as test_client:
-        yield test_client
+    test_client = TestClient(app)
+    yield test_client
 
 
 @pytest.fixture
-async def async_client(app):
+async def async_client(app: FastAPI) -> AsyncIterator[AsyncClient]:
     transport = ASGITransport(app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         yield client
