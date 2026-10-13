@@ -74,7 +74,7 @@ class HHAPIClient:
                 self._client.request, method, endpoint, params
             )
         except hh_api.BadResponse as ex:
-            raise HHIntegrationError(str(ex)) from ex
+            raise HHIntegrationError("HH API request failed") from ex
         finally:
             self._sync_tokens_from_library()
 
@@ -126,5 +126,5 @@ class HHOAuthClient:
         try:
             token = await asyncio.to_thread(client.authenticate, code)
         except hh_api.BadResponse as ex:
-            raise HHIntegrationError(str(ex)) from ex
+            raise HHIntegrationError("HH OAuth code exchange failed") from ex
         return _token_from_oauth_response(token)

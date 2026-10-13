@@ -50,6 +50,7 @@ class _FakeApiClient:
 class _FakeOAuthClient:
     instances: list["_FakeOAuthClient"] = []
     fail_codes: set[str] = set()
+    fail_error: Exception | None = None
 
     def __init__(self, **kwargs: Any) -> None:
         self.init_kwargs = kwargs
@@ -69,6 +70,8 @@ class _FakeOAuthClient:
 
     def authenticate(self, code: str) -> dict[str, Any]:
         if code in _FakeOAuthClient.fail_codes:
+            if _FakeOAuthClient.fail_error is not None:
+                raise _FakeOAuthClient.fail_error
             raise hh_api.BadResponse("oauth boom")
         return self.authenticate_result
 
@@ -180,10 +183,14 @@ async def test_api_client_wraps_library_errors(
     fake_api: type[_FakeApiClient],
 ) -> None:
     client = HHAPIClient(_dto(), allow_token_refresh=False)
-    fake_api.instances[-1].raise_error = hh_api.BadResponse("boom")
+    original = hh_api.BadResponse("boom with sensitive info")
+    fake_api.instances[-1].raise_error = original
 
-    with pytest.raises(HHIntegrationError, match="boom"):
+    with pytest.raises(HHIntegrationError) as exc_info:
         await client.request("GET", "/vacancies")
+
+    assert exc_info.value.__cause__ is original
+    assert "sensitive info" not in str(exc_info.value)
 
 
 def test_oauth_client_builds_authorization_url(
@@ -212,9 +219,17 @@ async def test_oauth_client_wraps_library_errors(
     fake_oauth: type[_FakeOAuthClient],
 ) -> None:
     client = HHOAuthClient(client_id="cid", client_secret="cs")
+    original = hh_api.BadResponse("oauth boom with code and client_secret")
     _FakeOAuthClient.fail_codes = {"bad"}
+    _FakeOAuthClient.fail_error = original
     try:
-        with pytest.raises(HHIntegrationError, match="oauth boom"):
+        with pytest.raises(HHIntegrationError) as exc_info:
             await client.exchange_code("bad", "https://example.com/cb")
     finally:
         _FakeOAuthClient.fail_codes = set()
+        _FakeOAuthClient.fail_error = None
+
+    assert exc_info.value.__cause__ is original
+    message = str(exc_info.value)
+    assert "oauth boom" not in message
+    assert "client_secret" not in message
