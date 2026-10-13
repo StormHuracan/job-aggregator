@@ -1,5 +1,7 @@
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Self
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -38,3 +40,27 @@ class VacancyListQuery(BaseModel):
             if self.salary_from > self.salary_to:
                 raise ValueError("salary_from не может быть больше чем salary_to")
         return self
+
+
+@dataclass
+class VacancyData:
+    source: str
+    external_id: str
+    title: str
+    company_name: str
+    area_name: str | None
+    salary_from: int | None
+    salary_to: int | None
+    salary_currency: str | None
+    description: str | None
+    source_url: str
+    published_at: datetime | None
+    raw_data: dict[str, Any] | None
+
+    def __post_init__(self) -> None:
+        if self.published_at is not None:
+            if (
+                self.published_at.tzinfo is None
+                or self.published_at.utcoffset() is None
+            ):
+                raise ValueError("published_at должен быть timezone-aware")

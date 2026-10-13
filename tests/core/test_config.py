@@ -26,7 +26,6 @@ def test_settings_defaults() -> None:
     assert settings.hh_client_id is None
     assert settings.hh_client_secret is None
     assert settings.hh_redirect_uri is None
-    assert settings.hh_client_mode == "fake"
     assert settings.hh_allow_token_refresh is False
     assert settings.scheduler_enabled is False
     assert settings.scheduler_interval_minutes == 60
@@ -35,15 +34,15 @@ def test_settings_defaults() -> None:
 
 def test_settings_read_from_environment(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("APP_NAME", "my-app")
-    monkeypatch.setenv("HH_CLIENT_MODE", "real")
     monkeypatch.setenv("SCHEDULER_ENABLED", "true")
+    monkeypatch.setenv("HH_ALLOW_TOKEN_REFRESH", "true")
     monkeypatch.setenv("SCHEDULER_INTERVAL_MINUTES", "30")
 
     settings = Settings()
 
     assert settings.app_name == "my-app"
-    assert settings.hh_client_mode == "real"
     assert settings.scheduler_enabled is True
+    assert settings.hh_allow_token_refresh is True
     assert settings.scheduler_interval_minutes == 30
 
 

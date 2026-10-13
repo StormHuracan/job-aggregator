@@ -6,11 +6,13 @@ readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
     "aiohttp>=3.12.0",
+    "alembic>=1.20.0",
     "anyio>=4.0.0",
     "apscheduler>=3.11.0",
     "asyncpg>=0.30.0",
     "fastapi>=0.118.0",
     "pydantic>=2.13.5",
+    "hh-applicant-tool==2.0.1",
     "pydantic-settings>=2.10.0",
     "sqlalchemy[asyncio]>=2.0.0",
     "uvicorn[standard]>=0.37.0",
@@ -29,12 +31,13 @@ dev = [
 
 target-version = "py314"
 line-length = 88
-
+extend-exclude = ["alembic/versions"]
 [tool.ruff.lint]
 
 select = ["E", "F", "I"]
 
 [tool.pytest.ini_options]
+addopts = "--import-mode=importlib"
 pythonpath = ["src"]
 testpaths = ["tests"]
 asyncio_mode = "auto"

@@ -1,0 +1,59 @@
+# Тесты
+
+Каталоги зеркалируют ответственность `src/job_aggregator`: `api`, `core`, `db`,
+`integrations`, `schemas`, `services`. Новый тест кладём в соответствующий слой,
+а не в корень `tests`. Имена файлов — `test_<модуль>.py`. Pytest использует
+importlib, поэтому одинаковые имена в разных каталогах допустимы.
+
+В корне остаются инфраструктурные helpers, `conftest.py` и тесты самих общих
+helpers. Не создаём заранее пустые каталоги для ещё не реализованных слоёв.
+
+## Общая подготовка
+
+- Общие fixtures находятся в `tests/conftest.py`. Не копируем их в каждый файл.
+- Fixture одного файла остаётся рядом с тестами. Fixture одного каталога — в
+  его `conftest.py`; в корень переносим только при использовании разными слоями.
+- `client` выдаёт отдельное приложение с настоящими роутерами, но без production
+  lifespan. Подмены задаём через `client.app.dependency_overrides`, не глобальный
+  `job_aggregator.main.app`. Подменяем сервисы, если тесту не нужна БД.
+- `sqlite_session` выдаёт отдельную in-memory SQLite-сессию. Она нужна для общих
+  операций ORM; PostgreSQL-specific SQL, миграции и конкурентные транзакции
+  проверяем отдельно на тестовой PostgreSQL. SQLite этого не доказывает.
+- Для проверки собственной metadata, как в тестах `Base`, допустима локальная
+  session-fixture: тестовые модели не добавляем в `Base.metadata` приложения.
+- `tests/factories.py` содержит небольшие функции создания повторяющихся DTO.
+  Фабрика создаёт данные, fixture управляет подготовкой и временем жизни.
+  В тестах самого DTO явный конструктор часто понятнее фабрики.
+- Переиспользуемые fake-клиенты размещаем в `tests/fakes/` по мере реализации,
+  например `tests.fakes.hh.FakeHHClient` из JA-57. Fake описывает поведение;
+  fixture может создавать его для теста. Production-код их не импортирует.
+- Если тесту нужен корень проекта, используем `tests.paths.PROJECT_ROOT`,
+  а не вычисляем его по глубине вложенности тестового файла.
+
+Не выносим проверки в универсальные helpers только ради уменьшения числа строк:
+из теста должно быть видно действие и ожидаемый результат. Ошибки HTTP и ответы
+HH.ru проверяем с mocks, без реальных внешних запросов. Фиксированные даты
+предпочтительнее `datetime.now()`, когда ход времени не является предметом теста.
+
+## Запуск
+
+```bash
+uv run pytest
+uv run pytest tests/api -q
+uv run pytest tests/db tests/services -q
+uv run pytest tests/integrations/hh -q
+```
+
+Текущий набор не требует запущенной PostgreSQL. Тесты, которые проверяют реальные
+миграции и PostgreSQL, должны явно использовать отдельную тестовую БД и
+документировать необходимые настройки; рабочую БД разработчика не используем.
+
+
+## PostgreSQL-тесты
+
+Тесты, которым нужен реальный PostgreSQL, используют fixture `pg_session_factory`.
+Они запускаются только если задана переменная окружения `TEST_DATABASE_URL`:
+
+```bash
+docker exec -it job-aggregator-db psql -U postgres -c "CREATE DATABASE job_aggregator_test;"
+TEST_DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5432/job_aggregator_test uv run pytest tests/db -v
