@@ -6,6 +6,12 @@
 
 html { -webkit-tap-highlight-color: rgb(7 95 203 / 18%); }
 
+::selection { background: #b9d7f8; color: var(--color-ink); }
+
+::-webkit-scrollbar { height: 0.75rem; width: 0.75rem; }
+::-webkit-scrollbar-thumb { background: #a7b8ca; border: 0.2rem solid var(--color-background); border-radius: 1rem; }
+::-webkit-scrollbar-track { background: var(--color-background); }
+
 body {
   background: var(--color-background);
   color: var(--color-text);

@@ -2,7 +2,6 @@
   <section class="vacancies-page">
     <div class="page-heading">
       <div>
-        <p class="page-kicker">Поиск работы</p>
         <h1>Вакансии</h1>
         <p class="page-intro">Соберите подходящие роли в одном месте и возвращайтесь к поиску в удобном темпе.</p>
       </div>
@@ -67,11 +66,10 @@ async function runCollection(): Promise<void> {
 </script>
 <style scoped>
 .page-heading { align-items: end; display: flex; gap: var(--space-6); justify-content: space-between; margin-bottom: var(--space-8); }
-.page-kicker { color: var(--color-link); font-size: 0.85rem; font-weight: 750; margin: 0 0 var(--space-2); }
 .page-heading h1 { margin-bottom: var(--space-3); }
 .page-intro { color: var(--color-muted); margin: 0; max-width: 48ch; }
 .page-heading button { flex: none; }
-.collection-status { background: #fff7e5; border-left: 0.25rem solid var(--color-amber); margin: -1rem 0 var(--space-6); padding: var(--space-3) var(--space-4); }
+.collection-status { background: #fff7e5; border: 1px solid #ead6a7; color: #76540f; margin: -1rem 0 var(--space-6); padding: var(--space-3) var(--space-4); }
 .filters { border-block: 1px solid var(--color-border); display: grid; gap: 0.9rem; grid-template-columns: repeat(3, minmax(0, 1fr)); margin: 1.5rem 0; padding: 1.25rem 0; }
 .filters-heading { grid-column: 1 / -1; }
 .filters-heading h2, .results-heading h2 { font-size: 1.1rem; margin: 0; }
