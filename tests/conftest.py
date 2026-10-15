@@ -47,7 +47,12 @@ async def sqlite_session() -> AsyncIterator[AsyncSession]:
     компенсирует потерю timezone в SQLite только в рамках этой сессии.
     """
     from job_aggregator.db.base import Base
-    from job_aggregator.db.models import saved_search, vacancy  # noqa: F401
+    from job_aggregator.db.models import (  # noqa: F401
+        auth_session,
+        saved_search,
+        user,
+        vacancy,
+    )
     from job_aggregator.db.models.hh_account_token import HHAccountToken
     from job_aggregator.db.session import create_engine_and_factory
 
