@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 from typing import Any, Literal
 
 from hh_applicant_tool import api as hh_api
+from pydantic import ValidationError
 
 from job_aggregator.integrations.hh.dto import (
     HHVacancyPage,
@@ -233,15 +234,11 @@ class HHClient:
                 items.append(vacancy)
 
         try:
-            page = int(response.get("page", 0))
-            found = int(response.get("found", 0))
-            pages = int(response.get("pages", 0))
-        except (TypeError, ValueError) as ex:
+            return HHVacancyPage(
+                items=items,
+                page=int(response.get("page", 0)),
+                found=int(response.get("found", 0)),
+                pages=int(response.get("pages", 0)),
+            )
+        except (TypeError, ValueError, ValidationError) as ex:
             raise HHIntegrationError("Unexpected HH vacancies response") from ex
-
-        return HHVacancyPage(
-            items=items,
-            page=page,
-            found=found,
-            pages=pages,
-        )

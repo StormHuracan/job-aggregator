@@ -187,3 +187,11 @@ async def test_search_vacancies_items_not_list_raises() -> None:
 
     with pytest.raises(HHIntegrationError):
         await client.search_vacancies(HHVacancySearchParams(text="python"))
+
+
+async def test_search_vacancies_invalid_metadata_raises() -> None:
+    stub = _StubApiClient({"items": [], "page": 0, "found": 0, "pages": -1})
+    client = HHClient(stub)  # type: ignore[arg-type]
+
+    with pytest.raises(HHIntegrationError):
+        await client.search_vacancies(HHVacancySearchParams(text="python"))
