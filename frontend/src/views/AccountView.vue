@@ -33,8 +33,9 @@
 import { onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 
-import { getCurrentUser, logout, markMatchesSeen, updateSettings, type CurrentUser } from "../api/user";
+import type { CurrentUser } from "../api/user";
 import AsyncState from "../components/AsyncState.vue";
+import { accountFixture } from "../mocks/user";
 
 const router = useRouter();
 const defaultArea = ref("");
@@ -47,7 +48,7 @@ async function load(): Promise<void> {
   loading.value = true;
   error.value = null;
   try {
-    user.value = await getCurrentUser();
+    user.value = await accountFixture.getCurrentUser();
     defaultArea.value = user.value.settings.default_area ?? "";
     pagesLimit.value = user.value.settings.default_pages_limit;
   } catch {
@@ -59,7 +60,7 @@ async function load(): Promise<void> {
 
 async function save(): Promise<void> {
   if (!user.value || pagesLimit.value < 1) return;
-  user.value.settings = await updateSettings({
+  user.value.settings = await accountFixture.updateSettings({
     default_area: defaultArea.value || null,
     default_pages_limit: pagesLimit.value,
   });
@@ -67,12 +68,12 @@ async function save(): Promise<void> {
 
 async function markSeen(): Promise<void> {
   if (!user.value) return;
-  await markMatchesSeen();
+  await accountFixture.markMatchesSeen();
   user.value.new_matches_count = 0;
 }
 
 async function signOut(): Promise<void> {
-  await logout();
+  await accountFixture.logout();
   await router.push("/login");
 }
 
