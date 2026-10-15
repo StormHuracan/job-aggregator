@@ -1,7 +1,8 @@
 import { createRouter, createWebHistory } from "vue-router";
 
 import { ApiError } from "../api/client";
-import { getCurrentUser, type CurrentUser } from "../api/user";
+import type { CurrentUser } from "../api/user";
+import { accountFixture } from "../mocks/user";
 import AccountView from "../views/AccountView.vue";
 import LoginView from "../views/LoginView.vue";
 import NotFoundView from "../views/NotFoundView.vue";
@@ -10,7 +11,7 @@ import VacanciesView from "../views/VacanciesView.vue";
 
 type CurrentUserLoader = () => Promise<CurrentUser>;
 
-export function createAppRouter(loadCurrentUser: CurrentUserLoader = getCurrentUser) {
+export function createAppRouter(loadCurrentUser: CurrentUserLoader = accountFixture.getCurrentUser) {
   const router = createRouter({
     history: createWebHistory(),
     routes: [
