@@ -5,8 +5,9 @@ from datetime import UTC, datetime
 from typing import Any, Literal
 
 from hh_applicant_tool import api as hh_api
+from requests import RequestException
 
-from job_aggregator.integrations.hh.errors import HHIntegrationError
+from job_aggregator.integrations.hh.errors import classify_error
 from job_aggregator.schemas.hh_token import HHAccountTokenData
 
 _ALLOWED_METHODS = Literal["GET", "POST", "PUT", "DELETE"]
@@ -73,8 +74,8 @@ class HHAPIClient:
             return await asyncio.to_thread(
                 self._client.request, method, endpoint, params
             )
-        except hh_api.BadResponse as ex:
-            raise HHIntegrationError("HH API request failed") from ex
+        except (hh_api.BadResponse, RequestException) as ex:
+            raise classify_error(ex) from ex
         finally:
             self._sync_tokens_from_library()
 
@@ -125,6 +126,6 @@ class HHOAuthClient:
         )
         try:
             token = await asyncio.to_thread(client.authenticate, code)
-        except hh_api.BadResponse as ex:
-            raise HHIntegrationError("HH OAuth code exchange failed") from ex
+        except (hh_api.BadResponse, RequestException) as ex:
+            raise classify_error(ex) from ex
         return _token_from_oauth_response(token)
