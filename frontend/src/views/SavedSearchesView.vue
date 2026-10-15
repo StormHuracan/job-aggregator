@@ -5,4 +5,13 @@
     <SavedSearchList :searches="searches" @toggle="toggled" />
   </section>
 </template>
-<script setup lang="ts">import { ref } from "vue";import type { SavedSearch, SavedSearchCreate } from "../api/saved-searches";import SavedSearchForm from "../components/SavedSearchForm.vue";import SavedSearchList from "../components/SavedSearchList.vue";const searches=ref<SavedSearch[]>([]);function created(_search: SavedSearchCreate):void {} function toggled(_id:number,_enabled:boolean):void {}</script>
+<script setup lang="ts">
+import type { SavedSearchCreate } from "../api/saved-searches";
+import SavedSearchForm from "../components/SavedSearchForm.vue";
+import SavedSearchList from "../components/SavedSearchList.vue";
+import { useSavedSearches } from "../composables/useSavedSearches";
+
+const { createSearch, searches, setEnabled } = useSavedSearches();
+function created(search: SavedSearchCreate): void { createSearch(search); }
+function toggled(id: number, enabled: boolean): void { setEnabled(id, enabled); }
+</script>
