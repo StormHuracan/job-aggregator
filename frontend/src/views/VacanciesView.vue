@@ -5,17 +5,22 @@
         <h1>Вакансии</h1>
         <p class="page-intro">Соберите подходящие роли в одном месте и возвращайтесь к поиску в удобном темпе.</p>
       </div>
-      <button :disabled="collectionRunning" type="button" @click="runCollection">{{ collectionRunning ? "Обновляем витрину…" : "Обновить вакансии" }}</button>
+      <button class="collection-action" :disabled="collectionRunning" type="button" @click="runCollection">{{ collectionRunning ? "Обновляем витрину…" : "Обновить вакансии" }}</button>
     </div>
     <p v-if="collectionMessage" class="collection-status" role="status">{{ collectionMessage }}</p>
     <form class="filters" @submit.prevent="applyFilters">
-      <div class="filters-heading"><h2>Уточнить выдачу</h2><p>Параметры сохраняются в ссылке.</p></div>
-      <label class="wide-field">Текст <input v-model="text" placeholder="Например, Python developer" /></label>
-      <label>Компания <input v-model="company" /></label>
-      <label>Город <input v-model="area" /></label>
-      <label>Зарплата от <input v-model.number="salaryFrom" min="0" type="number" /></label>
-      <label>Зарплата до <input v-model.number="salaryTo" min="0" type="number" /></label>
-      <button type="submit">Найти</button>
+      <div class="filters-heading"><h2>Начните с запроса</h2><p>Параметры сохраняются в ссылке.</p></div>
+      <label class="query-field">Текст <input v-model="text" placeholder="Например, Python developer" /></label>
+      <button class="search-submit" type="submit">Найти вакансии</button>
+      <details class="advanced-filters">
+        <summary>Дополнительные параметры</summary>
+        <div class="advanced-fields">
+          <label>Компания <input v-model="company" /></label>
+          <label>Город <input v-model="area" /></label>
+          <label>Зарплата от <input v-model.number="salaryFrom" min="0" type="number" /></label>
+          <label>Зарплата до <input v-model.number="salaryTo" min="0" type="number" /></label>
+        </div>
+      </details>
     </form>
     <div class="results-heading"><h2>Результаты</h2><p>{{ filteredVacancies.length }} в текущей выдаче</p></div>
     <div class="vacancy-list"><VacancyCard v-for="vacancy in filteredVacancies" :key="vacancy.id" :vacancy="vacancy" /></div>
@@ -69,16 +74,23 @@ async function runCollection(): Promise<void> {
 .page-heading h1 { margin-bottom: var(--space-3); }
 .page-intro { color: var(--color-muted); margin: 0; max-width: 48ch; }
 .page-heading button { flex: none; }
+.collection-action { background: transparent; border: 1px solid var(--color-link); color: var(--color-link); }
+.collection-action:hover:not(:disabled) { background: #e0f2fe; color: var(--color-link-hover); }
 .collection-status { background: #fff7e5; border: 1px solid #ead6a7; color: #76540f; margin: -1rem 0 var(--space-6); padding: var(--space-3) var(--space-4); }
-.filters { border-block: 1px solid var(--color-border); display: grid; gap: 0.9rem; grid-template-columns: repeat(3, minmax(0, 1fr)); margin: 1.5rem 0; padding: 1.25rem 0; }
+.filters { align-items: end; background: var(--color-surface-subtle); border: 1px solid var(--color-border); display: grid; gap: var(--space-4); grid-template-columns: minmax(0, 1fr) auto; margin: 1.5rem 0; padding: var(--space-6); }
 .filters-heading { grid-column: 1 / -1; }
 .filters-heading h2, .results-heading h2 { font-size: 1.1rem; margin: 0; }
 .filters-heading p, .results-heading p { color: var(--color-muted); font-size: 0.9rem; margin: 0.2rem 0 0; }
-.wide-field { grid-column: span 2; }
+.query-field { min-width: 0; }
 .filters label { display: grid; gap: 0.35rem; }
+.search-submit { min-width: 11rem; }
+.advanced-filters { grid-column: 1 / -1; }
+.advanced-filters summary { color: var(--color-link); cursor: pointer; font-weight: 700; width: fit-content; }
+.advanced-filters[open] summary { margin-bottom: var(--space-4); }
+.advanced-fields { display: grid; gap: var(--space-4); grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .results-heading { align-items: baseline; display: flex; justify-content: space-between; margin: var(--space-8) 0 var(--space-2); }
 .vacancy-list { border-bottom: 1px solid var(--color-border); }
 .empty-result { color: var(--color-muted); padding: var(--space-8) 0; }
 .pagination { display: flex; gap: 0.75rem; justify-content: flex-end; margin-top: 1rem; }
-@media (max-width: 42rem) { .page-heading { align-items: start; flex-direction: column; } .filters { grid-template-columns: 1fr; } .wide-field { grid-column: auto; } }
+@media (max-width: 42rem) { .page-heading { align-items: start; flex-direction: column; } .filters { grid-template-columns: 1fr; padding: var(--space-4); } .search-submit { width: 100%; } .advanced-fields { grid-template-columns: 1fr; } }
 </style>

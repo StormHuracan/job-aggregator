@@ -1,14 +1,16 @@
 :root {
-  --color-background: #edf1f5;
+  --color-background: #f0f9ff;
   --color-surface: #ffffff;
-  --color-ink: #17212b;
-  --color-text: #263544;
-  --color-muted: #687789;
-  --color-link: #075fcb;
-  --color-link-hover: #044fa9;
-  --color-border: #cbd6e2;
-  --color-navy: #14283d;
+  --color-surface-subtle: #e7eff5;
+  --color-ink: #0f172a;
+  --color-text: #1e293b;
+  --color-muted: #475569;
+  --color-link: #0369a1;
+  --color-link-hover: #075985;
+  --color-border: #bae6fd;
+  --color-navy: #0c4a6e;
   --color-amber: #d89b1d;
+  --color-success: #15803d;
   --color-danger: #b91c1c;
   --space-1: 0.25rem;
   --space-2: 0.5rem;
@@ -18,5 +20,5 @@
   --space-8: 2rem;
   --radius-sm: 0.35rem;
   --radius-md: 0.75rem;
-  --shadow-panel: 0 0.75rem 2.5rem rgb(23 33 43 / 8%);
+  --shadow-panel: none;
 }

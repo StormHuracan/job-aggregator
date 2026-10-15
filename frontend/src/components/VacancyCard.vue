@@ -25,7 +25,7 @@ const salary = computed(() => {
 .card h3 { color: var(--color-ink); font-size: 1.25rem; margin: 0 0 0.3rem; }
 .meta { color: var(--color-muted); margin: 0; }
 .meta span { color: var(--color-amber); font-weight: 800; padding-inline: var(--space-1); }
-.salary { color: var(--color-ink); font-weight: 750; margin: 0.7rem 0; }
+.salary { color: var(--color-success); font-feature-settings: "tnum"; font-variant-numeric: tabular-nums; font-weight: 750; margin: 0.7rem 0; }
 .description { color: var(--color-text); margin: var(--space-3) 0 0; max-width: 65ch; }
 .vacancy-aside { align-self: start; text-align: right; }
 .vacancy-aside .salary { margin: 0 0 var(--space-3); }
