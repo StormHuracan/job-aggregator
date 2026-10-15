@@ -33,21 +33,21 @@ const area = ref(String(route.query.area ?? ""));
 const salaryFrom = ref(Number(route.query.salary_from) || undefined);
 const salaryTo = ref(Number(route.query.salary_to) || undefined);
 const limit = Number(route.query.limit) || 20;
-const offset = Number(route.query.offset) || 0;
+const offset = computed(() => Number(route.query.offset) || 0);
 const collectionRunning = ref(false);
 const collectionMessage = ref("");
 const filteredVacancies = computed(() => vacancies.filter((vacancy) => {
   const matchesText = [vacancy.title, vacancy.company_name, vacancy.area_name].filter(Boolean).join(" ").toLowerCase().includes(`${text.value} ${company.value} ${area.value}`.trim().toLowerCase());
   const salary = vacancy.salary_from ?? vacancy.salary_to ?? 0;
   return matchesText && (!salaryFrom.value || salary >= salaryFrom.value) && (!salaryTo.value || salary <= salaryTo.value);
-}).slice(offset, offset + limit));
+}).slice(offset.value, offset.value + limit));
 
 async function applyFilters(): Promise<void> {
   await router.replace({ query: { text: text.value || undefined, company: company.value || undefined, area: area.value || undefined, salary_from: salaryFrom.value, salary_to: salaryTo.value, limit, offset: undefined } });
 }
 
 async function changePage(direction: number): Promise<void> {
-  await router.replace({ query: { ...route.query, offset: Math.max(0, offset + direction * limit) } });
+  await router.replace({ query: { ...route.query, offset: Math.max(0, offset.value + direction * limit) } });
 }
 
 async function runCollection(): Promise<void> {
