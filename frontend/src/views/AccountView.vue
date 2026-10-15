@@ -4,7 +4,19 @@
     <AsyncState :error="error" :loading="loading">
       <template #default>
         <template v-if="user">
-          <div class="account-summary"><p><span>Пользователь</span>{{ user.display_name }}</p><p><span>HH.ru</span>{{ user.hh_connected ? "подключён" : "не подключён" }}</p><p><span>Новых совпадений</span>{{ user.new_matches_count }}</p></div>
+          <div class="account-summary" aria-label="Сводка аккаунта">
+            <div class="summary-item user-summary"><span>Пользователь</span><strong>{{ user.display_name }}</strong></div>
+            <div :class="['summary-item', 'connection-summary', { 'is-connected': user.hh_connected }]">
+              <span>HH.ru</span>
+              <strong>{{ user.hh_connected ? "Подключён" : "Не подключён" }}</strong>
+              <small>{{ user.hh_connected ? "Персональные данные синхронизируются" : "Подключите аккаунт, когда OAuth будет готов" }}</small>
+            </div>
+            <div :class="['summary-item', 'matches-summary', { 'has-new-matches': user.new_matches_count > 0 }]">
+              <span>Новых совпадений</span>
+              <strong>{{ user.new_matches_count }}</strong>
+              <small>{{ user.new_matches_count > 0 ? "Требуют просмотра" : "Всё просмотрено" }}</small>
+            </div>
+          </div>
 
           <div class="account-workspace">
             <form class="settings-form" @submit.prevent="save">
@@ -93,8 +105,13 @@ onMounted(load);
 </script>
 <style scoped>
 .account-summary { display: grid; gap: 1px; grid-template-columns: repeat(3, 1fr); margin: 0 0 2rem; overflow: hidden; border: 1px solid var(--color-border); border-radius: var(--radius-sm); }
-.account-summary p { background: #f4f7fa; font-size: 1.2rem; font-weight: 700; margin: 0; padding: 1rem; }
-.account-summary span { color: var(--color-muted); display: block; font-size: 0.75rem; font-weight: 650; margin-bottom: 0.35rem; }
+.summary-item { background: #f4f7fa; display: grid; min-height: 7.75rem; padding: var(--space-4); }
+.summary-item > span { color: var(--color-muted); font-size: 0.75rem; font-weight: 700; margin-bottom: var(--space-2); }
+.summary-item strong { color: var(--color-ink); font-size: 1.15rem; line-height: 1.2; }
+.summary-item small { align-self: end; color: var(--color-muted); font-size: 0.78rem; line-height: 1.35; margin-top: var(--space-3); }
+.connection-summary:not(.is-connected) { background: #fff8ea; box-shadow: inset 0.25rem 0 var(--color-amber); }
+.connection-summary.is-connected { background: #edf8f2; box-shadow: inset 0.25rem 0 #18794e; }
+.matches-summary.has-new-matches { background: #eef5ff; box-shadow: inset 0.25rem 0 var(--color-link); }
 .account-workspace { align-items: start; display: grid; gap: var(--space-8); grid-template-columns: minmax(0, 1fr) minmax(15rem, 0.6fr); }
 .settings-form { display: grid; gap: 1rem; max-width: 35rem; }
 .section-heading h2, .account-actions h2 { font-size: 1.05rem; margin: 0; }
