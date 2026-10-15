@@ -4,6 +4,8 @@
   box-sizing: border-box;
 }
 
+html { -webkit-tap-highlight-color: rgb(7 95 203 / 18%); }
+
 body {
   background: var(--color-background);
   color: var(--color-text);
@@ -29,6 +31,7 @@ button {
   cursor: pointer;
   font-weight: 650;
   padding: 0.65rem 0.9rem;
+  touch-action: manipulation;
 }
 
 button:hover:not(:disabled) { background: var(--color-link-hover); }
@@ -49,7 +52,10 @@ input:focus-visible {
 }
 
 .app-content > section { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-md); box-shadow: var(--shadow-panel); padding: clamp(1.25rem, 3vw, 2.5rem); }
-h1 { color: var(--color-ink); font-size: clamp(2rem, 5vw, 3.8rem); letter-spacing: -0.055em; line-height: 0.98; margin: 0 0 1.75rem; }
+h1 { color: var(--color-ink); font-size: clamp(2rem, 5vw, 3.8rem); letter-spacing: -0.055em; line-height: 0.98; margin: 0 0 1.75rem; text-wrap: balance; }
 h2 { color: var(--color-ink); letter-spacing: -0.025em; }
+h1, h2, h3 { scroll-margin-top: 1rem; }
 label { color: var(--color-text); font-weight: 650; }
+.skip-link { background: var(--color-amber); color: var(--color-navy); left: 1rem; padding: 0.6rem 0.9rem; position: fixed; text-decoration: none; top: -5rem; z-index: 2; }
+.skip-link:focus { top: 1rem; }
 @media (max-width: 40rem) { .app-content { padding-inline: 0.75rem; } }
