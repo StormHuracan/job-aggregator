@@ -1,6 +1,8 @@
 <template>
   <section>
     <h1>Вакансии</h1>
+    <button :disabled="collectionRunning" type="button" @click="runCollection">{{ collectionRunning ? "Сбор выполняется…" : "Собрать вакансии" }}</button>
+    <p v-if="collectionMessage" role="status">{{ collectionMessage }}</p>
     <form @submit.prevent="applyFilters">
       <label>Текст <input v-model="text" /></label>
       <label>Компания <input v-model="company" /></label>
@@ -32,6 +34,8 @@ const salaryFrom = ref(Number(route.query.salary_from) || undefined);
 const salaryTo = ref(Number(route.query.salary_to) || undefined);
 const limit = Number(route.query.limit) || 20;
 const offset = Number(route.query.offset) || 0;
+const collectionRunning = ref(false);
+const collectionMessage = ref("");
 const filteredVacancies = computed(() => vacancies.filter((vacancy) => {
   const matchesText = [vacancy.title, vacancy.company_name, vacancy.area_name].filter(Boolean).join(" ").toLowerCase().includes(`${text.value} ${company.value} ${area.value}`.trim().toLowerCase());
   const salary = vacancy.salary_from ?? vacancy.salary_to ?? 0;
@@ -44,5 +48,13 @@ async function applyFilters(): Promise<void> {
 
 async function changePage(direction: number): Promise<void> {
   await router.replace({ query: { ...route.query, offset: Math.max(0, offset + direction * limit) } });
+}
+
+async function runCollection(): Promise<void> {
+  collectionRunning.value = true;
+  collectionMessage.value = "";
+  await Promise.resolve();
+  collectionRunning.value = false;
+  collectionMessage.value = "Сбор вакансий завершён. Данные будут обновлены после подключения API.";
 }
 </script>
