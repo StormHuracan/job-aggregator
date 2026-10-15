@@ -6,8 +6,13 @@ from typing import Any, Literal
 
 from hh_applicant_tool import api as hh_api
 
+from job_aggregator.integrations.hh.dto import (
+    HHVacancyPage,
+    HHVacancySearchParams,
+)
 from job_aggregator.integrations.hh.errors import HHIntegrationError
 from job_aggregator.schemas.hh_token import HHAccountTokenData
+from job_aggregator.schemas.vacancy import VacancyData
 
 _ALLOWED_METHODS = Literal["GET", "POST", "PUT", "DELETE"]
 
@@ -128,3 +133,115 @@ class HHOAuthClient:
         except hh_api.BadResponse as ex:
             raise HHIntegrationError("HH OAuth code exchange failed") from ex
         return _token_from_oauth_response(token)
+
+
+def _parse_published_at(value: Any) -> datetime | None:
+    """ISO 8601 → aware UTC. Невалидное/naive значение → None."""
+    if not isinstance(value, str):
+        return None
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        return None
+    return parsed.astimezone(UTC)
+
+
+def _to_vacancy_data(item: Any) -> VacancyData | None:
+    """Нормализовать элемент ответа HH в VacancyData.
+
+    Обязательные поля: id, name, alternate_url, employer.name.
+    Если чего-то нет — элемент отбрасывается (None).
+    """
+    if not isinstance(item, dict):
+        return None
+
+    external_id = item.get("id")
+    title = item.get("name")
+    source_url = item.get("alternate_url")
+    employer = item.get("employer")
+    company_name = employer.get("name") if isinstance(employer, dict) else None
+
+    if not (external_id and title and source_url and company_name):
+        return None
+
+    area = item.get("area")
+    area_name = area.get("name") if isinstance(area, dict) else None
+
+    salary = item.get("salary")
+    if isinstance(salary, dict):
+        salary_from = salary.get("from")
+        salary_to = salary.get("to")
+        salary_currency = salary.get("currency")
+    else:
+        salary_from = None
+        salary_to = None
+        salary_currency = None
+
+    snippet = item.get("snippet")
+    description = snippet.get("responsibility") if isinstance(snippet, dict) else None
+
+    return VacancyData(
+        source="hh",
+        external_id=str(external_id),
+        title=str(title),
+        company_name=str(company_name),
+        area_name=area_name,
+        salary_from=salary_from,
+        salary_to=salary_to,
+        salary_currency=salary_currency,
+        description=description,
+        source_url=str(source_url),
+        published_at=_parse_published_at(item.get("published_at")),
+        raw_data=item,
+    )
+
+
+class HHClient:
+    """Высокоуровневый клиент поиска вакансий HH.ru.
+
+    Инкапсулирует формат внешнего ответа и возвращает нормализованные
+    VacancyData внутри HHVacancyPage. Токены, сессии и ORM-модели
+    не сохраняются здесь — это ответственность сервисного слоя.
+    """
+
+    def __init__(self, api_client: HHAPIClient) -> None:
+        self._api = api_client
+
+    async def search_vacancies(self, params: HHVacancySearchParams) -> HHVacancyPage:
+        query: dict[str, Any] = {
+            "text": params.text,
+            "page": params.page,
+            "per_page": params.per_page,
+        }
+        if params.area:
+            query["area"] = params.area
+
+        response = await self._api.request("GET", "/vacancies", query)
+        if not isinstance(response, dict):
+            raise HHIntegrationError("Unexpected HH vacancies response")
+
+        raw_items = response.get("items")
+        if not isinstance(raw_items, list):
+            raise HHIntegrationError("Unexpected HH vacancies response")
+
+        items: list[VacancyData] = []
+        for raw in raw_items:
+            vacancy = _to_vacancy_data(raw)
+            if vacancy is not None:
+                items.append(vacancy)
+
+        try:
+            page = int(response.get("page", 0))
+            found = int(response.get("found", 0))
+            pages = int(response.get("pages", 0))
+        except (TypeError, ValueError) as ex:
+            raise HHIntegrationError("Unexpected HH vacancies response") from ex
+
+        return HHVacancyPage(
+            items=items,
+            page=page,
+            found=found,
+            pages=pages,
+        )
