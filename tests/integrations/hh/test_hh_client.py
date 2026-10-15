@@ -5,7 +5,10 @@ import pytest
 
 from job_aggregator.integrations.hh.client import HHClient
 from job_aggregator.integrations.hh.dto import HHVacancySearchParams
-from job_aggregator.integrations.hh.errors import HHIntegrationError
+from job_aggregator.integrations.hh.errors import (
+    HHIntegrationError,
+    HHPermanentRequestError,
+)
 
 
 class _StubApiClient:
@@ -177,7 +180,7 @@ async def test_search_vacancies_wraps_unexpected_response() -> None:
     stub = _StubApiClient({"unexpected": "structure"})
     client = HHClient(stub)  # type: ignore[arg-type]
 
-    with pytest.raises(HHIntegrationError):
+    with pytest.raises(HHPermanentRequestError):
         await client.search_vacancies(HHVacancySearchParams(text="python"))
 
 
