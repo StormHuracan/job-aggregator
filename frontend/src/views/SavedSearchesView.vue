@@ -1,5 +1,5 @@
 <template>
-  <section>
+  <section class="saved-searches">
     <h1>Сохранённые поиски</h1>
     <SavedSearchForm @create="created" />
     <SavedSearchList :searches="searches" @toggle="toggled" />
@@ -15,3 +15,4 @@ const { createSearch, searches, setEnabled } = useSavedSearches();
 function created(search: SavedSearchCreate): void { createSearch(search); }
 function toggled(id: number, enabled: boolean): void { setEnabled(id, enabled); }
 </script>
+<style scoped>.saved-searches :deep(form) { background: #f4f7fa; border-radius: var(--radius-sm); display: grid; gap: 1rem; margin-bottom: 1.5rem; padding: 1.25rem; }</style>

@@ -1,9 +1,9 @@
 <template>
   <section>
     <h1>Вакансии</h1>
-    <button :disabled="collectionRunning" type="button" @click="runCollection">{{ collectionRunning ? "Сбор выполняется…" : "Собрать вакансии" }}</button>
+    <div class="page-intro"><p>Общая витрина для спокойного поиска следующей роли.</p><button :disabled="collectionRunning" type="button" @click="runCollection">{{ collectionRunning ? "Сбор выполняется…" : "Обновить витрину" }}</button></div>
     <p v-if="collectionMessage" role="status">{{ collectionMessage }}</p>
-    <form @submit.prevent="applyFilters">
+    <form class="filters" @submit.prevent="applyFilters">
       <label>Текст <input v-model="text" /></label>
       <label>Компания <input v-model="company" /></label>
       <label>Город <input v-model="area" /></label>
@@ -13,8 +13,7 @@
     </form>
     <VacancyCard v-for="vacancy in filteredVacancies" :key="vacancy.id" :vacancy="vacancy" />
     <p v-if="filteredVacancies.length === 0">Вакансии не найдены.</p>
-    <button :disabled="offset === 0" type="button" @click="changePage(-1)">Предыдущая страница</button>
-    <button :disabled="filteredVacancies.length < limit" type="button" @click="changePage(1)">Следующая страница</button>
+    <nav aria-label="Пагинация" class="pagination"><button :disabled="offset === 0" type="button" @click="changePage(-1)">Предыдущая</button><button :disabled="filteredVacancies.length < limit" type="button" @click="changePage(1)">Следующая</button></nav>
   </section>
 </template>
 
@@ -58,3 +57,11 @@ async function runCollection(): Promise<void> {
   collectionMessage.value = "Сбор вакансий завершён. Данные будут обновлены после подключения API.";
 }
 </script>
+<style scoped>
+.page-intro { align-items: start; display: flex; gap: 1rem; justify-content: space-between; margin-bottom: 1.5rem; }
+.page-intro p { color: var(--color-muted); margin: 0; max-width: 38ch; }
+.filters { display: grid; gap: 0.9rem; grid-template-columns: repeat(3, minmax(0, 1fr)); margin: 1.5rem 0; padding: 1.25rem; background: #f4f7fa; border-radius: var(--radius-sm); }
+.filters label { display: grid; gap: 0.35rem; }
+.pagination { display: flex; gap: 0.75rem; justify-content: flex-end; margin-top: 1rem; }
+@media (max-width: 42rem) { .page-intro { flex-direction: column; } .filters { grid-template-columns: 1fr; } }
+</style>

@@ -4,9 +4,7 @@
     <AsyncState :error="error" :loading="loading">
       <template #default>
         <template v-if="user">
-          <p>Пользователь: {{ user.display_name }}</p>
-          <p>HH.ru: {{ user.hh_connected ? "подключён" : "не подключён" }}</p>
-          <p>Новых совпадений: {{ user.new_matches_count }}</p>
+          <div class="account-summary"><p><span>Пользователь</span>{{ user.display_name }}</p><p><span>HH.ru</span>{{ user.hh_connected ? "подключён" : "не подключён" }}</p><p><span>Новых совпадений</span>{{ user.new_matches_count }}</p></div>
 
           <form @submit.prevent="save">
             <label>
@@ -79,3 +77,10 @@ async function signOut(): Promise<void> {
 
 onMounted(load);
 </script>
+<style scoped>
+.account-summary { display: grid; gap: 1px; grid-template-columns: repeat(3, 1fr); margin: 0 0 2rem; overflow: hidden; border: 1px solid var(--color-border); border-radius: var(--radius-sm); }
+.account-summary p { background: #f4f7fa; font-size: 1.2rem; font-weight: 700; margin: 0; padding: 1rem; }
+.account-summary span { color: var(--color-muted); display: block; font-size: 0.75rem; font-weight: 650; margin-bottom: 0.35rem; }
+form { display: grid; gap: 1rem; max-width: 35rem; } label { display: grid; gap: 0.35rem; } button + button { margin-left: 0.75rem; }
+@media (max-width: 42rem) { .account-summary { grid-template-columns: 1fr; } }
+</style>

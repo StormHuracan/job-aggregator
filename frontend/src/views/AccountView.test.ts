@@ -29,7 +29,7 @@ describe("AccountView", () => {
     await flushPromises();
 
     expect(wrapper.text()).toContain("Демо-пользователь");
-    expect(wrapper.text()).toContain("Новых совпадений: 0");
+    expect(wrapper.text()).toContain("Новых совпадений0");
     expect(wrapper.text()).not.toMatch(/access token|refresh token|secret/i);
   });
 });
