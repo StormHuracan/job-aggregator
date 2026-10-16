@@ -4,6 +4,7 @@ from urllib.parse import urlencode
 
 import pytest
 from hh_applicant_tool import api as hh_api
+from requests import ConnectionError
 
 from job_aggregator.integrations.hh.client import HHAPIClient, HHOAuthClient
 from job_aggregator.integrations.hh.errors import HHIntegrationError
@@ -233,3 +234,33 @@ async def test_oauth_client_wraps_library_errors(
     message = str(exc_info.value)
     assert "oauth boom" not in message
     assert "client_secret" not in message
+
+
+async def test_api_client_retries_temporary_library_error(
+    fake_api: type[_FakeApiClient],
+) -> None:
+    delays: list[float] = []
+
+    async def record_sleep(seconds: float) -> None:
+        delays.append(seconds)
+
+    client = HHAPIClient(_dto(), allow_token_refresh=False, retry_sleep=record_sleep)
+    fake = fake_api.instances[-1]
+    calls = 0
+
+    def fail_twice_then_answer(
+        method: str, endpoint: str, params: dict | None = None
+    ) -> Any:
+        nonlocal calls
+        calls += 1
+        if calls <= 2:
+            raise ConnectionError("network down")
+        return {"ok": True}
+
+    fake.request = fail_twice_then_answer  # type: ignore[assignment]
+
+    result = await client.request("GET", "/vacancies")
+
+    assert result == {"ok": True}
+    assert calls == 3
+    assert delays == [0.5, 1.0]

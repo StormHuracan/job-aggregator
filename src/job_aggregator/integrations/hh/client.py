@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from typing import Any, Literal
 
@@ -16,6 +17,7 @@ from job_aggregator.integrations.hh.errors import (
     HHPermanentRequestError,
     classify_error,
 )
+from job_aggregator.integrations.hh.retry import retry_hh_request
 from job_aggregator.schemas.hh_token import HHAccountTokenData
 from job_aggregator.schemas.vacancy import VacancyData
 
@@ -56,9 +58,11 @@ class HHAPIClient:
         allow_token_refresh: bool,
         client_id: str | None = None,
         client_secret: str | None = None,
+        retry_sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
     ) -> None:
         self._tokens = tokens
         self._allow_token_refresh = allow_token_refresh
+        self._retry_sleep = retry_sleep
 
         kwargs: dict[str, Any] = _dto_to_library_kwargs(tokens)
         if allow_token_refresh:
@@ -79,12 +83,16 @@ class HHAPIClient:
         endpoint: str,
         params: dict[str, Any] | None = None,
     ) -> Any:
+        async def call_library() -> Any:
+            try:
+                return await asyncio.to_thread(
+                    self._client.request, method, endpoint, params
+                )
+            except (hh_api.BadResponse, RequestException) as ex:
+                raise classify_error(ex) from ex
+
         try:
-            return await asyncio.to_thread(
-                self._client.request, method, endpoint, params
-            )
-        except (hh_api.BadResponse, RequestException) as ex:
-            raise classify_error(ex) from ex
+            return await retry_hh_request(call_library, sleep=self._retry_sleep)
         finally:
             self._sync_tokens_from_library()
 
