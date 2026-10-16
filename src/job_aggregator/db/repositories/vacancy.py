@@ -1,12 +1,13 @@
+import builtins
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import ColumnElement, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from job_aggregator.db.models.vacancy import Vacancy
-from job_aggregator.schemas.vacancy import VacancyData
+from job_aggregator.schemas.vacancy import VacancyData, VacancyListQuery
 
 _MUTABLE_FIELDS = (
     "title",
@@ -105,3 +106,57 @@ class VacancyRepository:
                 changed = True
         if changed:
             await self._session.flush()
+
+    async def list(
+        self,
+        query: VacancyListQuery,
+    ) -> tuple[builtins.list[Vacancy], int]:
+        """___"""
+        conditions = self._filters(query)
+
+        total = await self._session.scalar(
+            select(func.count()).select_from(Vacancy).where(*conditions)
+        )
+
+        page = await self._session.scalars(
+            select(Vacancy)
+            .where(*conditions)
+            .order_by(
+                Vacancy.published_at.desc().nulls_last(),
+                Vacancy.id.asc(),
+            )
+            .limit(___)
+            .offset(___)
+        )
+
+        return list(page), total or 0
+        
+    def _filters(self, query: VacancyListQuery) -> builtins.list[ColumnElement[bool]]:
+        """Собирает условия выборки из заданных фильтров."""
+        conditions: builtins.list[ColumnElement[bool]] = []
+
+        if query.company is not None:
+            conditions.append(Vacancy.company_name.ilike(f"%{query.company}%"))
+
+        if query.area is not None:
+            conditions.append(Vacancy.area_name.ilike(f"%{query.area}%"))
+
+        if query.text is not None:
+            pattern = f"%{query.text}%"
+            conditions.append(
+                or_(
+                    Vacancy.title.ilike(pattern),
+                    Vacancy.description.ilike(pattern),
+                )
+            )
+
+        if query.salary_from is not None:
+            conditions.append(Vacancy.salary_from >= query.salary_from)
+
+        if query.salary_to is not None:
+            conditions.append(Vacancy.salary_to <= query.salary_to)
+
+        return conditions
+
+
+
