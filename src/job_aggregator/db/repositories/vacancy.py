@@ -111,7 +111,7 @@ class VacancyRepository:
         self,
         query: VacancyListQuery,
     ) -> tuple[builtins.list[Vacancy], int]:
-        """___"""
+        """Возвращает страницу вакансий и общее число подходящих под фильтры."""
         conditions = self._filters(query)
 
         total = await self._session.scalar(
@@ -125,12 +125,12 @@ class VacancyRepository:
                 Vacancy.published_at.desc().nulls_last(),
                 Vacancy.id.asc(),
             )
-            .limit(___)
-            .offset(___)
+            .limit(query.limit)
+            .offset(query.offset)
         )
 
         return list(page), total or 0
-        
+
     def _filters(self, query: VacancyListQuery) -> builtins.list[ColumnElement[bool]]:
         """Собирает условия выборки из заданных фильтров."""
         conditions: builtins.list[ColumnElement[bool]] = []
@@ -157,6 +157,3 @@ class VacancyRepository:
             conditions.append(Vacancy.salary_to <= query.salary_to)
 
         return conditions
-
-
-

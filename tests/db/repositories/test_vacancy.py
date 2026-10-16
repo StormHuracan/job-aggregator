@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from job_aggregator.db.models.vacancy import Vacancy
 from job_aggregator.db.repositories import VacancyRepository
-from job_aggregator.schemas.vacancy import VacancyData
+from job_aggregator.schemas.vacancy import VacancyData, VacancyListQuery
 
 
 def _data(**overrides: Any) -> VacancyData:
@@ -26,6 +26,10 @@ def _data(**overrides: Any) -> VacancyData:
     }
     base.update(overrides)
     return VacancyData(**base)
+
+
+def _query(**filters: Any) -> VacancyListQuery:
+    return VacancyListQuery(limit=100, offset=0, **filters)
 
 
 def _utc(value: datetime | None) -> datetime | None:
@@ -170,3 +174,118 @@ async def test_upsert_does_not_commit(sqlite_session: AsyncSession) -> None:
         assert commit_called is False
     finally:
         sqlite_session.commit = original_commit  # type: ignore[method-assign]
+
+
+async def test_list_filters_by_company_case_insensitive(
+    sqlite_session: AsyncSession,
+) -> None:
+    repo = VacancyRepository(sqlite_session)
+    await repo.upsert(_data(external_id="1", company_name="ACME Corp"))
+    await repo.upsert(_data(external_id="2", company_name="Other"))
+
+    vacancies, total = await repo.list(_query(company="acme"))
+
+    assert [v.external_id for v in vacancies] == ["1"]
+    assert total == 1
+
+
+async def test_list_filters_by_area_case_insensitive(
+    sqlite_session: AsyncSession,
+) -> None:
+    repo = VacancyRepository(sqlite_session)
+    await repo.upsert(_data(external_id="1", area_name="Saint Petersburg"))
+    await repo.upsert(_data(external_id="2", area_name="Moscow"))
+
+    vacancies, total = await repo.list(_query(area="petersburg"))
+
+    assert [v.external_id for v in vacancies] == ["1"]
+    assert total == 1
+
+
+async def test_list_filters_text_by_title_or_description(
+    sqlite_session: AsyncSession,
+) -> None:
+    repo = VacancyRepository(sqlite_session)
+    await repo.upsert(
+        _data(external_id="1", title="Python Developer", description="Backend")
+    )
+    await repo.upsert(
+        _data(external_id="2", title="Engineer", description="We use PYTHON")
+    )
+    await repo.upsert(_data(external_id="3", title="Designer", description="Figma"))
+
+    vacancies, total = await repo.list(_query(text="python"))
+
+    assert sorted(v.external_id for v in vacancies) == ["1", "2"]
+    assert total == 2
+
+
+async def test_list_filters_by_salary_from(sqlite_session: AsyncSession) -> None:
+    repo = VacancyRepository(sqlite_session)
+    await repo.upsert(_data(external_id="1", salary_from=150_000))
+    await repo.upsert(_data(external_id="2", salary_from=50_000))
+    await repo.upsert(_data(external_id="3", salary_from=None))
+
+    vacancies, total = await repo.list(_query(salary_from=100_000))
+
+    assert [v.external_id for v in vacancies] == ["1"]
+    assert total == 1
+
+
+async def test_list_filters_by_salary_to(sqlite_session: AsyncSession) -> None:
+    repo = VacancyRepository(sqlite_session)
+    await repo.upsert(_data(external_id="1", salary_to=150_000))
+    await repo.upsert(_data(external_id="2", salary_to=250_000))
+    await repo.upsert(_data(external_id="3", salary_to=None))
+
+    vacancies, total = await repo.list(_query(salary_to=200_000))
+
+    assert [v.external_id for v in vacancies] == ["1"]
+    assert total == 1
+
+
+async def test_list_combines_filters_with_and(sqlite_session: AsyncSession) -> None:
+    repo = VacancyRepository(sqlite_session)
+    await repo.upsert(_data(external_id="1", company_name="Acme", area_name="Moscow"))
+    await repo.upsert(_data(external_id="2", company_name="Acme", area_name="Kazan"))
+    await repo.upsert(_data(external_id="3", company_name="Other", area_name="Moscow"))
+
+    vacancies, total = await repo.list(_query(company="acme", area="moscow"))
+
+    assert [v.external_id for v in vacancies] == ["1"]
+    assert total == 1
+
+
+async def test_list_paginates_and_counts_all_matches(
+    sqlite_session: AsyncSession,
+) -> None:
+    repo = VacancyRepository(sqlite_session)
+    for day in range(1, 6):
+        await repo.upsert(
+            _data(
+                external_id=str(day),
+                published_at=datetime(2026, 1, day, tzinfo=UTC),
+            )
+        )
+
+    vacancies, total = await repo.list(VacancyListQuery(limit=2, offset=2))
+
+    assert [v.external_id for v in vacancies] == ["3", "2"]
+    assert total == 5
+
+
+async def test_list_sorts_by_published_at_desc_nulls_last_then_id(
+    sqlite_session: AsyncSession,
+) -> None:
+    repo = VacancyRepository(sqlite_session)
+    jan_2 = datetime(2026, 1, 2, tzinfo=UTC)
+    await repo.upsert(_data(external_id="a", published_at=jan_2))
+    await repo.upsert(_data(external_id="b", published_at=None))
+    await repo.upsert(
+        _data(external_id="c", published_at=datetime(2026, 1, 3, tzinfo=UTC))
+    )
+    await repo.upsert(_data(external_id="d", published_at=jan_2))
+
+    vacancies, _ = await repo.list(_query())
+
+    assert [v.external_id for v in vacancies] == ["c", "a", "d", "b"]
