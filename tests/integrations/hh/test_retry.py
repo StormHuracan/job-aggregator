@@ -1,3 +1,5 @@
+import logging
+
 import pytest
 
 from job_aggregator.integrations.hh.errors import (
@@ -76,3 +78,34 @@ async def test_exhausted_attempts_raise_original_error() -> None:
         await retry_hh_request(operation, sleep=RecordingSleep())
 
     assert exc_info.value is last_error
+
+
+async def test_rejects_non_positive_max_attempts() -> None:
+    operation = FlakyOperation([])
+
+    with pytest.raises(ValueError):
+        await retry_hh_request(operation, max_attempts=0)
+
+    assert operation.calls == 0
+
+
+async def test_rejects_non_positive_initial_delay() -> None:
+    operation = FlakyOperation([])
+
+    with pytest.raises(ValueError):
+        await retry_hh_request(operation, initial_delay_seconds=0)
+
+    assert operation.calls == 0
+
+
+async def test_retry_attempt_is_logged_without_error_message(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    operation = FlakyOperation([HHTemporaryError("secret-token-123")])
+
+    with caplog.at_level(logging.WARNING):
+        await retry_hh_request(operation, sleep=RecordingSleep())
+
+    assert "attempt 2 of 3" in caplog.text
+    assert "HHTemporaryError" in caplog.text
+    assert "secret-token-123" not in caplog.text
