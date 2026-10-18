@@ -1,11 +1,13 @@
 from contextlib import asynccontextmanager
 
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from fastapi import FastAPI
 
 from job_aggregator.api.router import api_router
 from job_aggregator.core.config import get_settings
 from job_aggregator.core.logging import configure_logging
 from job_aggregator.db.session import create_engine_and_factory
+from job_aggregator.jobs.scheduler import create_scheduler
 
 
 @asynccontextmanager
@@ -16,9 +18,17 @@ async def lifespan(app: FastAPI):
     app.state.engine = engine
     app.state.session_factory = session_factory
 
+    scheduler: AsyncIOScheduler | None = None
+    if settings.scheduler_enabled:
+        scheduler = create_scheduler(settings)
+        scheduler.start()
+    app.state.scheduler = scheduler
+
     try:
         yield
     finally:
+        if scheduler is not None:
+            scheduler.shutdown()
         await engine.dispose()
 
 

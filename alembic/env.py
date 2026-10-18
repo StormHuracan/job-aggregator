@@ -9,8 +9,10 @@ from alembic import context
 from job_aggregator.core.config import get_settings
 from job_aggregator.db.base import Base
 from job_aggregator.db.models import (  # noqa: F401
+    auth_session,
     hh_account_token,
     saved_search,
+    user,
     vacancy,
 )
 

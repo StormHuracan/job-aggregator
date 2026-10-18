@@ -11,6 +11,7 @@ dependencies = [
     "apscheduler>=3.11.0",
     "asyncpg>=0.30.0",
     "fastapi>=0.118.0",
+    "pydantic>=2.13.5",
     "hh-applicant-tool==2.0.1",
     "pydantic-settings>=2.10.0",
     "sqlalchemy[asyncio]>=2.0.0",
