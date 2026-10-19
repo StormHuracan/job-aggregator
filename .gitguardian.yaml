@@ -1,7 +1,6 @@
 version: 2
 
 secret:
-  ignored_paths:
-    - .env.example
-    - docker-compose.yml
-    - .github/workflows/ci.yml
+  ignored_matches:
+    - name: Local PostgreSQL development password
+      match: postgres
