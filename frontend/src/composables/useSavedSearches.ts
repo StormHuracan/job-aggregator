@@ -9,6 +9,8 @@ export function useSavedSearches() {
     const now = new Date().toISOString();
     searches.value.push({
       area: input.area ?? null,
+      min_salary: input.min_salary ?? null,
+      max_salary: input.max_salary ?? null,
       created_at: now,
       id: Date.now(),
       is_enabled: true,

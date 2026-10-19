@@ -35,7 +35,7 @@ import { useRoute, useRouter } from "vue-router";
 import type { VacancyResponse } from "../api/vacancies";
 import VacancyCard from "../components/VacancyCard.vue";
 
-const vacancies: VacancyResponse[] = [{ id: 1, title: "Python developer", company_name: "Демо-компания", area_name: "Москва", salary_from: 180000, salary_to: null, salary_currency: "RUR", description: "Тестовая вакансия. Данные будут заменены публичным API.", source_url: "https://hh.ru" }];
+const vacancies: VacancyResponse[] = [{ id: 1, source: "hh", external_id: "demo-1", published_at: null, created_at: "2026-10-19T12:00:00Z", updated_at: "2026-10-19T12:00:00Z", title: "Python developer", company_name: "Демо-компания", area_name: "Москва", salary_from: 180000, salary_to: null, salary_currency: "RUR", description: "Тестовая вакансия. Данные будут заменены публичным API.", source_url: "https://hh.ru" }];
 const route = useRoute();
 const router = useRouter();
 const text = ref(String(route.query.text ?? ""));
