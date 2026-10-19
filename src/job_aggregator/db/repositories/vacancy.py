@@ -4,7 +4,7 @@ from enum import StrEnum
 from typing import Any
 
 from sqlalchemy import ColumnElement, func, or_, select
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import DataError, DBAPIError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from job_aggregator.db.models.vacancy import Vacancy
@@ -15,6 +15,10 @@ class VacancyUpsertResult(StrEnum):
     CREATED = "created"
     UPDATED = "updated"
     UNCHANGED = "unchanged"
+
+
+class VacancySaveError(Exception):
+    """Данные вакансии отклонены без повреждения внешней транзакции."""
 
 
 _MUTABLE_FIELDS = (
@@ -66,6 +70,30 @@ class VacancyRepository:
         self._session = session
 
     async def upsert(self, vacancy: VacancyData) -> VacancyUpsertResult:
+        """Изолирует ошибку данных вакансии, не завершая внешнюю транзакцию.
+
+        VacancySaveError означает, что запись отклонена, но можно сохранять
+        следующие элементы. Сбои соединения и постороннего flush пробрасываются.
+        """
+        # begin_nested() тоже делает flush: посторонние pending-изменения
+        # нужно сохранить вне обработки ошибки именно текущей вакансии.
+        await self._session.flush()
+        try:
+            async with self._session.begin_nested():
+                return await self._upsert(vacancy)
+        except DBAPIError as error:
+            if error.connection_invalidated or not self._session.is_active:
+                raise
+            # asyncpg не все ошибки класса 22 переводит в SQLAlchemy DataError.
+            sqlstate = getattr(error.orig, "sqlstate", None)
+            data_error = isinstance(error, (DataError, IntegrityError)) or (
+                isinstance(sqlstate, str) and sqlstate.startswith(("22", "23"))
+            )
+            if not data_error:
+                raise
+            raise VacancySaveError("Данные вакансии отклонены") from error
+
+    async def _upsert(self, vacancy: VacancyData) -> VacancyUpsertResult:
         existing = await self._get(vacancy.source, vacancy.external_id)
         if existing is not None:
             changed = await self._apply(existing, vacancy)
