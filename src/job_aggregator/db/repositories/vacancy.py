@@ -1,5 +1,6 @@
 import builtins
 from datetime import UTC, datetime
+from enum import StrEnum
 from typing import Any
 
 from sqlalchemy import ColumnElement, func, or_, select
@@ -8,6 +9,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from job_aggregator.db.models.vacancy import Vacancy
 from job_aggregator.schemas.vacancy import VacancyData, VacancyListQuery
+
+
+class VacancyUpsertResult(StrEnum):
+    CREATED = "created"
+    UPDATED = "updated"
+    UNCHANGED = "unchanged"
+
 
 _MUTABLE_FIELDS = (
     "title",
@@ -44,9 +52,9 @@ class VacancyRepository:
     """Репозиторий сохранения и обновления вакансий.
 
     Идентичность вакансии определяется парой (source, external_id):
-    - новая пара создаёт запись, upsert() возвращает True;
-    - существующая пара обновляет изменяемые поля, upsert() возвращает False;
-    - повторное сохранение идентичных данных тоже возвращает False.
+    - новая пара возвращает VacancyUpsertResult.CREATED;
+    - изменённая существующая пара возвращает VacancyUpsertResult.UPDATED;
+    - идентичные данные возвращают VacancyUpsertResult.UNCHANGED.
 
     Репозиторий не делает commit()/rollback() переданной сессии — транзакцией
     управляет вызывающий код. При гонке первых вставок одной пары используется
@@ -57,11 +65,13 @@ class VacancyRepository:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
-    async def upsert(self, vacancy: VacancyData) -> bool:
+    async def upsert(self, vacancy: VacancyData) -> VacancyUpsertResult:
         existing = await self._get(vacancy.source, vacancy.external_id)
         if existing is not None:
-            await self._apply(existing, vacancy)
-            return False
+            changed = await self._apply(existing, vacancy)
+            if changed:
+                return VacancyUpsertResult.UPDATED
+            return VacancyUpsertResult.UNCHANGED
 
         try:
             async with self._session.begin_nested():
@@ -82,13 +92,16 @@ class VacancyRepository:
                     )
                 )
                 await self._session.flush()
-            return True
+            return VacancyUpsertResult.CREATED
+
         except IntegrityError:
             existing = await self._get(vacancy.source, vacancy.external_id)
             if existing is None:
                 raise
-            await self._apply(existing, vacancy)
-            return False
+            changed = await self._apply(existing, vacancy)
+            if changed:
+                return VacancyUpsertResult.UPDATED
+            return VacancyUpsertResult.UNCHANGED
 
     async def _get(self, source: str, external_id: str) -> Vacancy | None:
         return await self._session.scalar(
@@ -98,14 +111,18 @@ class VacancyRepository:
             )
         )
 
-    async def _apply(self, record: Vacancy, data: VacancyData) -> None:
+    async def _apply(self, record: Vacancy, data: VacancyData) -> bool:
         changed = False
+
         for field in _MUTABLE_FIELDS:
             if _values_differ(getattr(record, field), getattr(data, field)):
                 setattr(record, field, getattr(data, field))
                 changed = True
+
         if changed:
             await self._session.flush()
+
+        return changed
 
     async def list(
         self,

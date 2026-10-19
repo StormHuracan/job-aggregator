@@ -5,7 +5,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from job_aggregator.db.models.vacancy import Vacancy
-from job_aggregator.db.repositories import VacancyRepository
+from job_aggregator.db.repositories import VacancyRepository, VacancyUpsertResult
 from job_aggregator.schemas.vacancy import VacancyData, VacancyListQuery
 
 
@@ -42,21 +42,21 @@ def _utc(value: datetime | None) -> datetime | None:
 
 async def test_upsert_creates_new_record(sqlite_session: AsyncSession) -> None:
     repo = VacancyRepository(sqlite_session)
-    assert await repo.upsert(_data()) is True
+    assert await repo.upsert(_data()) == VacancyUpsertResult.CREATED
     await sqlite_session.commit()
 
     count = await sqlite_session.scalar(select(func.count()).select_from(Vacancy))
     assert count == 1
 
 
-async def test_upsert_returns_false_for_existing_pair(
+async def test_upsert_returns_updated_for_existing_pair(
     sqlite_session: AsyncSession,
 ) -> None:
     repo = VacancyRepository(sqlite_session)
-    assert await repo.upsert(_data(title="first")) is True
+    assert await repo.upsert(_data(title="first")) == VacancyUpsertResult.CREATED
     await sqlite_session.commit()
 
-    assert await repo.upsert(_data(title="second")) is False
+    assert await repo.upsert(_data(title="second")) == VacancyUpsertResult.UPDATED
     await sqlite_session.commit()
 
     count = await sqlite_session.scalar(select(func.count()).select_from(Vacancy))
@@ -88,7 +88,7 @@ async def test_upsert_preserves_id_and_created_at(
     assert _utc(record.created_at) == _utc(original_created_at)
 
 
-async def test_upsert_returns_false_for_identical_data(
+async def test_upsert_returns_unchanged_for_identical_data(
     sqlite_session: AsyncSession,
 ) -> None:
     repo = VacancyRepository(sqlite_session)
@@ -100,7 +100,7 @@ async def test_upsert_returns_false_for_identical_data(
     assert record is not None
     updated_before = _utc(record.updated_at)
 
-    assert await repo.upsert(payload) is False
+    assert await repo.upsert(payload) == VacancyUpsertResult.UNCHANGED
     await sqlite_session.commit()
 
     record = await sqlite_session.scalar(select(Vacancy))
@@ -148,8 +148,15 @@ async def test_upsert_allows_same_external_id_for_different_sources(
     sqlite_session: AsyncSession,
 ) -> None:
     repo = VacancyRepository(sqlite_session)
-    assert await repo.upsert(_data(source="hh", external_id="777")) is True
-    assert await repo.upsert(_data(source="remote", external_id="777")) is True
+    assert (
+        await repo.upsert(_data(source="hh", external_id="777"))
+        == VacancyUpsertResult.CREATED
+    )
+
+    assert (
+        await repo.upsert(_data(source="remote", external_id="777"))
+        == VacancyUpsertResult.CREATED
+    )
     await sqlite_session.commit()
 
     count = await sqlite_session.scalar(select(func.count()).select_from(Vacancy))
