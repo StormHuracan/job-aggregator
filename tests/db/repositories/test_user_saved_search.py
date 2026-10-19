@@ -142,14 +142,16 @@ async def test_repository_does_not_commit(
     sqlite_session: AsyncSession, users: tuple[User, User]
 ) -> None:
     alice, _ = users
+    # Сохраняем id до rollback: после него объект expired.
+    alice_id = alice.id
     repo = UserSavedSearchRepository(sqlite_session)
 
-    await _create_search(repo, alice.id, "A")
+    await _create_search(repo, alice_id, "A")
     await sqlite_session.rollback()
 
     count = await sqlite_session.scalar(
         select(func.count())
         .select_from(SavedSearch)
-        .where(SavedSearch.user_id == alice.id)
+        .where(SavedSearch.user_id == alice_id)
     )
     assert count == 0
