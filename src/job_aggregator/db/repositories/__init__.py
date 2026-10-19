@@ -5,7 +5,9 @@ from job_aggregator.db.repositories.vacancy import (
 )
 
 __all__ = [
+    "HHAccountRepository",
     "SavedSearchRepository",
     "VacancyRepository",
     "VacancyUpsertResult",
 ]
+from job_aggregator.db.repositories.hh_account import HHAccountRepository

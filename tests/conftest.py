@@ -49,18 +49,27 @@ async def sqlite_session() -> AsyncIterator[AsyncSession]:
     from job_aggregator.db.base import Base
     from job_aggregator.db.models import (  # noqa: F401
         auth_session,
+        hh_account,
         saved_search,
         user,
         vacancy,
     )
+    from job_aggregator.db.models.hh_account import HHAccount
     from job_aggregator.db.models.hh_account_token import HHAccountToken
     from job_aggregator.db.session import create_engine_and_factory
 
     def restore_token_timezone(session: Session, instance: object) -> None:
-        if isinstance(instance, HHAccountToken):
+        if isinstance(instance, (HHAccountToken, HHAccount)):
             value = instance.access_expires_at
             if value is not None and value.tzinfo is None:
                 instance.access_expires_at = value.replace(tzinfo=UTC)
+
+    def restore_refreshed_timezone(
+        instance: HHAccount, context: object, attrs: object
+    ) -> None:
+        value = instance.access_expires_at
+        if value is not None and value.tzinfo is None:
+            instance.access_expires_at = value.replace(tzinfo=UTC)
 
     engine, factory = create_engine_and_factory("sqlite+aiosqlite:///:memory:")
     try:
@@ -70,11 +79,13 @@ async def sqlite_session() -> AsyncIterator[AsyncSession]:
             event.listen(
                 session.sync_session, "loaded_as_persistent", restore_token_timezone
             )
+            event.listen(HHAccount, "refresh", restore_refreshed_timezone)
             try:
                 yield session
             finally:
                 event.remove(
                     session.sync_session, "loaded_as_persistent", restore_token_timezone
                 )
+                event.remove(HHAccount, "refresh", restore_refreshed_timezone)
     finally:
         await engine.dispose()
