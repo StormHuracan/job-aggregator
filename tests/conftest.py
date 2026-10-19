@@ -44,7 +44,8 @@ async def sqlite_session() -> AsyncIterator[AsyncSession]:
     """Выдаёт чистую SQLite-сессию; PostgreSQL-specific поведение не проверяет.
 
     Схема создаётся по ORM-моделям, а не миграциями. Восстановление UTC для токенов
-    компенсирует потерю timezone в SQLite только в рамках этой сессии.
+    компенсирует потерю timezone в SQLite только на время действия fixture,
+    включая отдельные сессии сервисов на том же тестовом двигателе.
     """
     from job_aggregator.db.base import Base
     from job_aggregator.db.models import (  # noqa: F401
@@ -76,16 +77,12 @@ async def sqlite_session() -> AsyncIterator[AsyncSession]:
         async with engine.begin() as connection:
             await connection.run_sync(Base.metadata.create_all)
         async with factory() as session:
-            event.listen(
-                session.sync_session, "loaded_as_persistent", restore_token_timezone
-            )
+            event.listen(Session, "loaded_as_persistent", restore_token_timezone)
             event.listen(HHAccount, "refresh", restore_refreshed_timezone)
             try:
                 yield session
             finally:
-                event.remove(
-                    session.sync_session, "loaded_as_persistent", restore_token_timezone
-                )
+                event.remove(Session, "loaded_as_persistent", restore_token_timezone)
                 event.remove(HHAccount, "refresh", restore_refreshed_timezone)
     finally:
         await engine.dispose()
