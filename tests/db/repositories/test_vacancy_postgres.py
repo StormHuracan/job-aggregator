@@ -7,7 +7,10 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from job_aggregator.db.models.saved_search import SavedSearch
 from job_aggregator.db.models.vacancy import Vacancy
-from job_aggregator.db.repositories import VacancyRepository
+from job_aggregator.db.repositories import (
+    VacancyRepository,
+    VacancyUpsertResult,
+)
 from job_aggregator.schemas.vacancy import VacancyData
 
 
@@ -42,15 +45,16 @@ async def test_concurrent_first_insert_preserves_outer_changes(
     """
     barrier = asyncio.Barrier(2)
 
-    async def worker(title: str) -> None:
+    async def worker(title: str) -> VacancyUpsertResult:
         async with pg_session_factory() as session:
             session.add(SavedSearch(name=f"marker-{title}", text="python"))
             await session.flush()
 
             repo = VacancyRepository(session)
             await barrier.wait()
-            await repo.upsert(_data(title=title))
+            result = await repo.upsert(_data(title=title))
             await session.commit()
+            return result
 
     results = await asyncio.gather(
         worker("from s1"),
@@ -59,6 +63,13 @@ async def test_concurrent_first_insert_preserves_outer_changes(
     )
     for result in results:
         assert not isinstance(result, Exception), result
+
+    assert sorted(result.value for result in results) == sorted(
+        [
+            VacancyUpsertResult.CREATED.value,
+            VacancyUpsertResult.UPDATED.value,
+        ]
+    )
 
     async with pg_session_factory() as session:
         vacancy_count = await session.scalar(select(func.count()).select_from(Vacancy))
