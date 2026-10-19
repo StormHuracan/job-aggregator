@@ -32,6 +32,27 @@ describe("request", () => {
     );
   });
 
+  it("reports an expired session without exposing the server response", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(
+      new Response('{"detail":"private session data"}', { status: 401 }),
+    ));
+    await expect(request("/me")).rejects.toEqual(
+      new ApiError(401, "Сессия истекла. Войдите снова"),
+    );
+  });
+
+  it("accepts a successful response without a body", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 204 })));
+    await expect(request<void>("/auth/logout", { method: "POST" })).resolves.toBeUndefined();
+  });
+
+  it("rejects malformed successful JSON with a safe error", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("<html>private error</html>")));
+    await expect(request("/me")).rejects.toEqual(
+      new ApiError(200, "API вернул некорректный ответ"),
+    );
+  });
+
   it("uses a safe message for a non-JSON error response", async () => {
     vi.stubGlobal(
       "fetch",

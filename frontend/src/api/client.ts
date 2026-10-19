@@ -3,6 +3,9 @@ import { ApiError } from "./errors";
 const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL ?? "/api").replace(/\/$/, "");
 
 function errorMessageForStatus(status: number): string {
+  if (status === 401) {
+    return "Сессия истекла. Войдите снова";
+  }
   if (status === 503) {
     return "Сервис временно недоступен";
   }
@@ -27,6 +30,10 @@ export async function request<T>(path: string, init: RequestInit = {}): Promise<
 
   if (!response.ok) {
     throw new ApiError(response.status, errorMessageForStatus(response.status));
+  }
+
+  if (response.status === 204) {
+    return undefined as T;
   }
 
   try {
