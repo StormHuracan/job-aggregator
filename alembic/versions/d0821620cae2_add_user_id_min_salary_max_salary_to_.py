@@ -25,7 +25,7 @@ def upgrade() -> None:
     op.add_column('saved_searches', sa.Column('min_salary', sa.Integer(), nullable=True))
     op.add_column('saved_searches', sa.Column('max_salary', sa.Integer(), nullable=True))
     op.create_index(op.f('ix_saved_searches_user_id'), 'saved_searches', ['user_id'], unique=False)
-    op.create_foreign_key(None, 'saved_searches', 'users', ['user_id'], ['id'])
+    op.create_foreign_key("fk_saved_searches_user_id_users", 'saved_searches', 'users', ['user_id'], ['id'])
     # ### end Alembic commands ###
 
 
@@ -35,7 +35,7 @@ def downgrade() -> None:
     # WARNING: constraint name is None; this directive will fail as
     # rendered.  Add a name, or use a naming convention; see
     # https://alembic.sqlalchemy.org/en/latest/naming.html
-    op.drop_constraint(None, 'saved_searches', type_='foreignkey')
+    op.drop_constraint("fk_saved_searches_user_id_users", 'saved_searches', type_='foreignkey')
     op.drop_index(op.f('ix_saved_searches_user_id'), table_name='saved_searches')
     op.drop_column('saved_searches', 'max_salary')
     op.drop_column('saved_searches', 'min_salary')
