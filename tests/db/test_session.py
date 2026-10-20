@@ -1,11 +1,27 @@
 from unittest.mock import AsyncMock, MagicMock
 
+import pytest
 from fastapi import Depends, FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy import text
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from job_aggregator.db.session import create_engine_and_factory, get_db_session
+
+
+async def test_database_errors_hide_secret_parameters() -> None:
+    engine, factory = create_engine_and_factory("sqlite+aiosqlite:///:memory:")
+    try:
+        async with factory() as session:
+            with pytest.raises(DBAPIError) as error:
+                await session.execute(
+                    text("INSERT INTO missing_token_table VALUES (:token)"),
+                    {"token": "secret-access-value"},
+                )
+            assert "secret-access-value" not in str(error.value)
+    finally:
+        await engine.dispose()
 
 
 async def test_session_factory_yields_working_session() -> None:

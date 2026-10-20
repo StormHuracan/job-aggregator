@@ -12,7 +12,10 @@ from sqlalchemy.ext.asyncio import (
 def create_engine_and_factory(
     database_url: str,
 ) -> tuple[AsyncEngine, async_sessionmaker[AsyncSession]]:
-    engine = create_async_engine(database_url, echo=False, future=True)
+    # Bind-параметры могут содержать OAuth-токены и не должны попасть в exception.
+    engine = create_async_engine(
+        database_url, echo=False, future=True, hide_parameters=True
+    )
     factory = async_sessionmaker(engine, expire_on_commit=False)
     return engine, factory
 
