@@ -174,6 +174,11 @@ curl http://127.0.0.1:8000/health
 
 Правила организации и запуска тестов: [tests/README.md](tests/README.md).
 
+## Веб-интерфейс
+
+Vue-приложение находится в `frontend/`. Запуск и проверки:
+[frontend/README.md](frontend/README.md).
+
 ## Миграции базы данных
 
 Схема PostgreSQL изменяется через Alembic. Адрес базы берётся из `DATABASE_URL`,
