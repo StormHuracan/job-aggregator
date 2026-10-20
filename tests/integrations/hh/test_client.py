@@ -4,7 +4,8 @@ from urllib.parse import urlencode
 
 import pytest
 from hh_applicant_tool import api as hh_api
-from requests import ConnectionError
+from requests import ConnectionError, PreparedRequest, Response
+from requests.adapters import HTTPAdapter
 
 from job_aggregator.integrations.hh.client import HHAPIClient, HHOAuthClient
 from job_aggregator.integrations.hh.errors import HHIntegrationError
@@ -87,6 +88,27 @@ def _reset_fakes() -> None:
 def fake_api(monkeypatch: pytest.MonkeyPatch) -> type[_FakeApiClient]:
     monkeypatch.setattr(hh_api, "ApiClient", _FakeApiClient)
     return _FakeApiClient
+
+
+async def test_real_sdk_uses_bounded_socket_timeouts(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen: list[Any] = []
+
+    def send(self: HTTPAdapter, request: PreparedRequest, **kwargs: Any) -> Response:
+        seen.append(kwargs.get("timeout"))
+        response = Response()
+        response.status_code = 200
+        response._content = b'{"ok": true}'
+        response.request = request
+        response.url = request.url
+        return response
+
+    monkeypatch.setattr(HTTPAdapter, "send", send)
+    client = HHAPIClient(_dto(), allow_token_refresh=False)
+    assert await client.request("GET", "/vacancies") == {"ok": True}
+    assert seen == [(5, 30)]
+    client.close()
 
 
 @pytest.fixture
