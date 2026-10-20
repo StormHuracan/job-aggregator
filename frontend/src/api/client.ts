@@ -1,4 +1,4 @@
-import { ApiError } from "./errors";
+import { ApiError, validationFieldErrors } from "./errors";
 
 const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL ?? "/api").replace(/\/$/, "");
 
@@ -29,6 +29,10 @@ export async function request<T>(path: string, init: RequestInit = {}): Promise<
   }
 
   if (!response.ok) {
+    if (response.status === 422) {
+      const body: unknown = await response.json().catch(() => null);
+      throw new ApiError(422, "Проверьте поля формы и диапазон зарплаты", validationFieldErrors(body));
+    }
     throw new ApiError(response.status, errorMessageForStatus(response.status));
   }
 

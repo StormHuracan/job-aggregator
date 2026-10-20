@@ -68,4 +68,34 @@ describe("request", () => {
       new ApiError(503, "Сервис временно недоступен"),
     );
   });
+
+  it("maps validation errors to safe field messages without returning raw input", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      detail: [
+        { loc: ["body", "name"], type: "string_too_long", msg: "private error", input: "secret" },
+        { loc: ["body", "min_salary"], type: "greater_than_equal", input: -1 },
+        { loc: ["body", "access_token"], type: "value_error", msg: "secret-token" },
+      ],
+    }), { status: 422 })));
+
+    const failure = await request("/saved-searches").catch((error: unknown) => error);
+    expect(failure).toBeInstanceOf(ApiError);
+    expect(failure).toMatchObject({
+      status: 422,
+      message: "Проверьте поля формы и диапазон зарплаты",
+      fieldErrors: { name: "Не более 255 символов", min_salary: "Введите целое неотрицательное число" },
+    });
+    expect((failure as ApiError).fieldErrors).toEqual({
+      name: "Не более 255 символов", min_salary: "Введите целое неотрицательное число",
+    });
+    expect(JSON.stringify(failure)).not.toContain("secret");
+    expect(JSON.stringify(failure)).not.toContain("access_token");
+  });
+
+  it("handles malformed validation bodies without exposing server text", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("private server error", { status: 422 })));
+    await expect(request("/saved-searches")).rejects.toMatchObject({
+      status: 422, fieldErrors: {}, message: "Проверьте поля формы и диапазон зарплаты",
+    });
+  });
 });
