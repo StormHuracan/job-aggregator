@@ -63,3 +63,10 @@ class VacancyData:
                 or self.published_at.utcoffset() is None
             ):
                 raise ValueError("published_at должен быть timezone-aware")
+
+
+class VacancyListResponse(BaseModel):
+    items: list[VacancyResponse]
+    total: int
+    limit: int
+    offset: int
