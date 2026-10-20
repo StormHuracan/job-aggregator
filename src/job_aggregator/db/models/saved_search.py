@@ -26,7 +26,7 @@ class SavedSearch(TimestampMixin, Base):
         nullable=False,
     )
     area: Mapped[str | None] = mapped_column(
-        String(100),
+        String(255),
         nullable=True,
     )
     is_enabled: Mapped[bool] = mapped_column(
