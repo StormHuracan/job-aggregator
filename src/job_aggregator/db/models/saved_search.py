@@ -1,4 +1,4 @@
-from sqlalchemy import Boolean, CheckConstraint, String, Text, true
+from sqlalchemy import Boolean, CheckConstraint, ForeignKey, Integer, String, Text, true
 from sqlalchemy.orm import Mapped, mapped_column, validates
 
 from job_aggregator.db.base import Base, TimestampMixin
@@ -34,6 +34,19 @@ class SavedSearch(TimestampMixin, Base):
         nullable=False,
         default=True,
         server_default=true(),
+    )
+    user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id"),
+        nullable=True,
+        index=True,
+    )
+    min_salary: Mapped[int | None] = mapped_column(
+        Integer,
+        nullable=True,
+    )
+    max_salary: Mapped[int | None] = mapped_column(
+        Integer,
+        nullable=True,
     )
 
     @validates("text")

@@ -26,6 +26,9 @@ def test_saved_search_model_structure() -> None:
         "is_enabled",
         "created_at",
         "updated_at",
+        "user_id",
+        "min_salary",
+        "max_salary",
     }
 
     actual_fields = set(SavedSearch.__table__.columns.keys())
