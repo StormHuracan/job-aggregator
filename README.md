@@ -47,7 +47,7 @@ job-aggregator/
 │   ├── env.py
 │   └── versions/
 ├── alembic.ini
-├── docker-compose.yml                # локальная PostgreSQL
+├── docker-compose.yml                # PostgreSQL и backend
 ├── docs/                             # карта реализации и документация команды
 ├── src/job_aggregator/
 │   ├── api/                          # HTTP-роуты FastAPI
@@ -139,6 +139,52 @@ HTTP-роуты FastAPI
 
 ## Локальный запуск
 
+### Backend и PostgreSQL через Docker Compose
+
+Нужны Docker с Compose. Python и uv на компьютере для этого варианта не нужны.
+Если `.env` ещё нет, скопируйте `.env.example` в `.env`; существующий файл не
+перезаписывайте. Для старого `.env` добавьте `COMPOSE_DATABASE_URL` по примеру.
+
+```bash
+docker compose up --build -d --wait
+curl http://127.0.0.1:8000/health
+```
+
+Compose ждёт готовности PostgreSQL. Backend выполняет `alembic upgrade head`,
+затем запускает API одним worker без reload. При ошибке миграции API не
+запускается: причину можно посмотреть через `docker compose logs backend`.
+Для старой базы сначала проверьте раздел миграций ниже.
+
+Swagger доступен по адресу http://127.0.0.1:8000/docs. Для OAuth заполните
+`HH_CLIENT_ID`, `HH_CLIENT_SECRET`, `HH_REDIRECT_URI`; без настройки HH
+доступность health/docs не означает готовность внешнего входа и сбора.
+Frontend запускается отдельно по [его инструкции](frontend/README.md).
+
+`DATABASE_URL` используется для запуска с компьютера, а `COMPOSE_DATABASE_URL`
+— внутри backend-контейнера. В контейнерном URL хост — `postgres`, порт — `5432`.
+При изменении `POSTGRES_DB`, `POSTGRES_USER` или `POSTGRES_PASSWORD` обновите
+контейнерный URL; спецсимволы логина/пароля в URL кодируются percent-encoding.
+Изменение credentials в `.env` не меняет уже созданную базу в volume.
+
+Порты компьютера задаются `BACKEND_PORT` и `POSTGRES_PORT` (по умолчанию 8000 и
+5432). При изменении порта БД измените также host `DATABASE_URL`; порт
+`COMPOSE_DATABASE_URL` остаётся 5432. При другом backend-порте понадобится
+согласовать Vite proxy с адресом backend.
+
+```bash
+docker compose logs -f backend
+docker compose exec backend alembic current
+docker compose exec backend alembic check
+docker compose down
+```
+
+Обычный `down` сохраняет данные в volume `pgdata`; `down -v` удаляет их.
+При обновлении кода снова выполните `docker compose up --build -d --wait`.
+Автосбор включается настройками приложения после регистрации job; контейнер
+сам по себе не добавляет отсутствующую бизнес-логику scheduler.
+
+### Backend на компьютере, PostgreSQL в Docker
+
 Если `.env` уже настроен, пропустите команду `cp`, чтобы не перезаписать его.
 
 ```bash
@@ -146,7 +192,13 @@ uv sync
 cp .env.example .env
 ```
 
-Заполните `DATABASE_URL` в `.env` и создайте пустую базу PostgreSQL. Для базы,
+Заполните `DATABASE_URL` в `.env` и поднимите PostgreSQL:
+
+```bash
+docker compose up -d postgres
+```
+
+Также можно использовать свою пустую базу PostgreSQL. Для базы,
 созданной старой версией приложения, сначала выполните переход, описанный ниже.
 
 Перед запуском приложения примените миграции:
