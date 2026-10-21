@@ -1,33 +1,162 @@
 <template>
-  <article class="card">
-    <div class="vacancy-main">
-      <h3>{{ vacancy.title }}</h3>
-      <p class="meta">{{ vacancy.company_name ?? "Компания не указана" }} <span aria-hidden="true">/</span> {{ vacancy.area_name ?? "Город не указан" }}</p>
-      <p v-if="vacancy.description" class="description">{{ vacancy.description }}</p>
+  <article class="vacancy-card">
+    <div class="company-avatar" aria-hidden="true">
+      {{ vacancy.company_name?.slice(0, 1).toUpperCase() || "↗" }}
     </div>
-    <div class="vacancy-aside"><p class="salary">{{ salary }}</p><a :href="vacancy.source_url" rel="noopener noreferrer" target="_blank">В источник</a></div>
+    <div class="vacancy-main">
+      <p class="company">{{ vacancy.company_name ?? "Компания не указана" }}</p>
+      <h3>{{ vacancy.title }}</h3>
+      <p class="meta">
+        <span>{{ vacancy.area_name ?? "Город не указан" }}</span
+        ><span v-if="published">Опубликовано {{ published }}</span>
+      </p>
+      <p v-if="vacancy.description" class="description">
+        {{ vacancy.description }}
+      </p>
+    </div>
+    <div class="vacancy-aside">
+      <p class="salary">{{ salary }}</p>
+      <a :href="vacancy.source_url" rel="noopener noreferrer" target="_blank"
+        >{{ vacancy.source === "hh" ? "Открыть на HH.ru" : "Открыть оригинал" }}
+        <span aria-hidden="true">↗</span
+        ><span class="sr-only"> (в новой вкладке)</span></a
+      >
+    </div>
   </article>
 </template>
-
 <script setup lang="ts">
 import { computed } from "vue";
 import type { VacancyResponse } from "../api/vacancies";
-
 const props = defineProps<{ vacancy: VacancyResponse }>();
+const published = computed(() => {
+  const date = props.vacancy.published_at
+    ? new Date(props.vacancy.published_at)
+    : null;
+  return date && !Number.isNaN(date.getTime())
+    ? date.toLocaleDateString("ru-RU", { day: "numeric", month: "long" })
+    : null;
+});
 const salary = computed(() => {
-  const amount = props.vacancy.salary_from ?? props.vacancy.salary_to;
-  return amount === null ? "Зарплата не указана" : `Зарплата от ${amount.toLocaleString("ru-RU")} ${props.vacancy.salary_currency ?? ""}`.trim();
+  const {
+    salary_from: from,
+    salary_to: to,
+    salary_currency: currency,
+  } = props.vacancy;
+  const format = (value: number) => value.toLocaleString("ru-RU");
+  const suffix =
+    currency === "RUR" || currency === "RUB" ? "₽" : (currency ?? "");
+  if (from === null && to === null) return "Зарплата не указана";
+  const range =
+    from !== null && to !== null
+      ? from === to
+        ? format(from)
+        : `${format(from)}–${format(to)}`
+      : from !== null
+        ? `от ${format(from)}`
+        : `до ${format(to!)}`;
+  return `${range} ${suffix}`.trim();
 });
 </script>
 <style scoped>
-.card { border-top: 1px solid var(--color-border); display: grid; gap: var(--space-6); grid-template-columns: minmax(0, 1fr) minmax(11rem, 0.36fr); padding: 1.35rem 0; }
-.card:first-of-type { border-top: 0; }
-.card h3 { color: var(--color-ink); font-size: 1.25rem; margin: 0 0 0.3rem; }
-.meta { color: var(--color-muted); margin: 0; }
-.meta span { color: var(--color-amber); font-weight: 800; padding-inline: var(--space-1); }
-.salary { color: var(--color-success); font-feature-settings: "tnum"; font-variant-numeric: tabular-nums; font-weight: 750; margin: 0.7rem 0; }
-.description { color: var(--color-text); margin: var(--space-3) 0 0; max-width: 65ch; }
-.vacancy-aside { align-self: start; text-align: right; }
-.vacancy-aside .salary { margin: 0 0 var(--space-3); }
-@media (max-width: 42rem) { .card { grid-template-columns: 1fr; } .vacancy-aside { text-align: left; } }
+.vacancy-card {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: 44px minmax(0, 1fr) auto;
+  padding: 24px;
+}
+.vacancy-card + .vacancy-card {
+  border-top: 1px solid var(--color-border);
+}
+.company-avatar {
+  align-items: center;
+  background: var(--color-surface-subtle);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  color: var(--color-muted);
+  display: flex;
+  font-size: 18px;
+  font-weight: 700;
+  height: 44px;
+  justify-content: center;
+}
+.company {
+  overflow-wrap: anywhere;
+  color: var(--color-muted);
+  font-size: 13px;
+  margin: 0 0 4px;
+}
+h3 {
+  margin-bottom: 8px;
+}
+.meta {
+  color: var(--color-muted);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 13px;
+  gap: 4px 16px;
+  margin: 0;
+}
+.description {
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  display: -webkit-box;
+  font-size: 14px;
+  margin: 12px 0 0;
+  max-width: 65ch;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+.vacancy-aside {
+  align-items: end;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 240px;
+}
+.salary {
+  color: var(--color-ink);
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  margin: 0;
+}
+.vacancy-aside a {
+  align-items: center;
+  display: inline-flex;
+  font-size: 13px;
+  gap: 8px;
+  min-height: 44px;
+  text-decoration: none;
+}
+.vacancy-aside a:hover {
+  text-decoration: underline;
+}
+.sr-only {
+  clip-path: inset(50%);
+  height: 1px;
+  overflow: hidden;
+  position: absolute;
+  width: 1px;
+}
+@media (max-width: 700px) {
+  .vacancy-card {
+    gap: 12px;
+    grid-template-columns: 36px minmax(0, 1fr);
+    padding: 20px 16px;
+  }
+  .company-avatar {
+    height: 36px;
+    width: 36px;
+    border-radius: 9px;
+  }
+  .vacancy-aside {
+    align-items: start;
+    gap: 0;
+    grid-column: 2;
+    max-width: none;
+  }
+  .description {
+    -webkit-line-clamp: 2;
+  }
+}
 </style>

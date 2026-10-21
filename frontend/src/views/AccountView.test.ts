@@ -15,7 +15,8 @@ vi.mock("../api/user", () => ({
   updateSettings: vi.fn(),
 }));
 
-vi.mock("vue-router", () => ({
+vi.mock("vue-router", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("vue-router")>()),
   useRouter: () => ({ push: vi.fn() }),
 }));
 
