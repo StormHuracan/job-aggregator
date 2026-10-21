@@ -6,30 +6,72 @@ from job_aggregator.db.repositories.vacancy import (
     VacancyUpsertResult,
 )
 from job_aggregator.integrations.hh.client import HHClient
-from job_aggregator.integrations.hh.dto import HHVacancySearchParams
+from job_aggregator.integrations.hh.dto import HHVacancyPage, HHVacancySearchParams
 from job_aggregator.schemas.collection import CollectionRunResponse
 
 logger = logging.getLogger(__name__)
 
 
 class VacancyCollectionService:
-    """Сбор одной страницы с частичным успехом только при ошибках данных."""
+    """Сбор вакансий с частичным успехом при ошибках данных."""
 
     def __init__(self, client: HHClient, repository: VacancyRepository) -> None:
         self._client = client
         self._repository = repository
 
     async def collect(self, params: HHVacancySearchParams) -> CollectionRunResponse:
-        """Возвращает счётчики; commit и фатальные ошибки — у вызывающей стороны."""
+        """Собирает ровно одну страницу. Оставлен для обратной совместимости."""
         logger.info("Collection started")
         try:
-            return await self._collect(params)
+            page = await self._client.search_vacancies(params)
+            result = await self._process_page_items(page)
+            self._log_completed(len(page.items), result)
+            return result
         except Exception as error:
             logger.error("Collection failed: %s", type(error).__name__)
             raise
 
-    async def _collect(self, params: HHVacancySearchParams) -> CollectionRunResponse:
-        page = await self._client.search_vacancies(params)
+    async def collect_pages(
+        self, params: HHVacancySearchParams, pages_limit: int
+    ) -> CollectionRunResponse:
+        """Собирает до pages_limit страниц (максимальное число запросов)."""
+        if pages_limit <= 0:
+            raise ValueError("pages_limit должен быть больше нуля")
+
+        logger.info("Collection started (pages_limit=%d)", pages_limit)
+        result = CollectionRunResponse(created=0, updated=0, skipped=0, failed=0)
+        current_page = params.page
+        total_received = 0
+
+        try:
+            for _ in range(pages_limit):
+                # Не мутируем исходный DTO, создаем копию с нужным page
+                page_params = params.model_copy(update={"page": current_page})
+                page = await self._client.search_vacancies(page_params)
+                total_received += len(page.items)
+
+                page_result = await self._process_page_items(page)
+                result.created += page_result.created
+                result.updated += page_result.updated
+                result.skipped += page_result.skipped
+                result.failed += page_result.failed
+
+                # Останавливаемся, если страница пустая или это была последняя страница
+                if not page.items:
+                    break
+                if current_page + 1 >= page.pages:
+                    break
+
+                current_page += 1
+
+            self._log_completed(total_received, result)
+            return result
+        except Exception as error:
+            logger.error("Collection failed: %s", type(error).__name__)
+            raise
+
+    async def _process_page_items(self, page: HHVacancyPage) -> CollectionRunResponse:
+        """Обрабатывает вакансии на одной странице, возвращая счетчики."""
         result = CollectionRunResponse(created=0, updated=0, skipped=0, failed=0)
         for vacancy in page.items:
             try:
@@ -48,13 +90,15 @@ class VacancyCollectionService:
                     result.skipped += 1
                 case _:
                     raise ValueError("Неизвестный результат сохранения вакансии")
+        return result
+
+    def _log_completed(self, received: int, result: CollectionRunResponse) -> None:
         logger.info(
             "Collection completed: received=%d created=%d updated=%d "
             "skipped=%d failed=%d",
-            len(page.items),
+            received,
             result.created,
             result.updated,
             result.skipped,
             result.failed,
         )
-        return result
