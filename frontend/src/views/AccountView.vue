@@ -110,7 +110,7 @@
             </div>
           </form>
           <aside class="account-aside">
-            <div class="panel matches">
+            <div v-if="user.new_matches_count !== null" class="panel matches">
               <h2>
                 Новых совпадений<span class="matches-count">{{
                   user.new_matches_count

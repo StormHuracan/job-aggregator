@@ -15,7 +15,7 @@ export type CurrentUser = {
   display_name: string;
   hh_connected: boolean;
   access_expires_at: string | null;
-  new_matches_count: number;
+  new_matches_count: number | null;
   settings: UserSettings;
 };
 

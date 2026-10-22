@@ -35,6 +35,12 @@ afterEach(() => {
 });
 
 describe("AccountView live API", () => {
+  it("hides unavailable match statistics instead of showing a fake zero", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(json({ ...user, new_matches_count: null })));
+    await open();
+    expect(wrapper.find(".matches").exists()).toBe(false);
+    expect(wrapper.text()).toContain("Даниил");
+  });
   it("loads the public user and settings without demo fallback", async () => {
     const fetch = vi.fn().mockResolvedValue(json(user));
     vi.stubGlobal("fetch", fetch);
