@@ -80,12 +80,16 @@ async def logout(
     request: Request,
     db: AsyncSession = Depends(get_db_session),
 ) -> Response:
-    """Отозвать только текущую сессию; повторный выход безопасен."""
+    """Отозвать текущую действующую сессию без rolling-продления."""
     token = request.cookies.get(SESSION_COOKIE_NAME)
+    if not token:
+        raise HTTPException(401, "Not authenticated")
     try:
-        if token:
-            await AuthSessionService(db).revoke_session(token)
-            await db.commit()
+        service = AuthSessionService(db)
+        if await service.get_user_id(token) is None:
+            raise HTTPException(401, "Not authenticated")
+        await service.revoke_session(token)
+        await db.commit()
     except SQLAlchemyError:
         await db.rollback()
         raise HTTPException(500, "Не удалось завершить сеанс") from None
