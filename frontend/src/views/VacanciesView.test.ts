@@ -47,6 +47,18 @@ afterEach(() => {
 });
 
 describe("Vacancies API search", () => {
+  it("asks to reconnect HH on collection 409 instead of claiming another run", async () => {
+    vi.stubGlobal("fetch", vi.fn()
+      .mockResolvedValueOnce(response(list()))
+      .mockResolvedValueOnce(response({}, 409)));
+    await open();
+    await wrapper.get(".source-toggle").trigger("click");
+    await wrapper.get(".collection-form input").setValue("Python");
+    await wrapper.get(".collection-form").trigger("submit");
+    await flushPromises();
+    expect(wrapper.text()).toContain("Подключите HH.ru повторно");
+    expect(wrapper.text()).not.toContain("Сбор уже выполняется");
+  });
   it("loads URL filters including zero and uses server total for pagination", async () => {
     const fetch = vi
       .fn()

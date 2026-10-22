@@ -384,7 +384,7 @@ async function collect(): Promise<void> {
     collectionError.value = true;
     collectionMessage.value =
       error instanceof ApiError && error.status === 409
-        ? "Сбор уже выполняется. Дождитесь его завершения."
+        ? "Подключите HH.ru повторно, чтобы запустить сбор вакансий."
         : await message(error);
   } finally {
     collectionRunning.value = false;
