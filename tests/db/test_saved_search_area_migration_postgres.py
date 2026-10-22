@@ -71,10 +71,10 @@ async def test_area_migration_preserves_searches_and_accepts_255_characters(
         searches = await UserSavedSearchRepository(session).list_for_user(user_id)
         assert [len(search.area) for search in searches] == [100, 101, 255]
 
-    # Сужение обратно до 100 проверяем без несовместимых длинных значений.
+    # Сужение area до 100 живёт в c47e92ab6130, а не в текущей голове.
     async with pg_session_factory.begin() as session:
         await session.execute(delete(SavedSearch).where(SavedSearch.id != legacy_id))
-    await migrate("downgrade", "-1")
+    await migrate("downgrade", "5a2d3c72bc8f")
     async with engine.connect() as connection:
         length = await connection.scalar(
             text(
