@@ -1,7 +1,7 @@
+from dataclasses import dataclass
 from typing import Annotated
 
 from pydantic import BaseModel, Field, StringConstraints
-from pydantic.dataclasses import dataclass
 
 from job_aggregator.schemas.vacancy import VacancyData
 
