@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ApiError } from "../api/client";
 import type { CurrentUser } from "../api/user";
@@ -14,6 +14,21 @@ const user: CurrentUser = {
 };
 
 describe("router", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("checks the real session by default", async () => {
+    const fetch = vi
+      .fn()
+      .mockResolvedValue(new Response(null, { status: 401 }));
+    vi.stubGlobal("fetch", fetch);
+    const router = createAppRouter();
+    await router.push("/vacancies?text=Python");
+    expect(fetch.mock.calls[0]?.[0]).toBe("/api/me");
+    expect(router.currentRoute.value).toMatchObject({
+      path: "/login",
+      query: { redirect: "/vacancies?text=Python" },
+    });
+  });
   it("redirects the start route to vacancies", async () => {
     const router = createAppRouter(async () => user);
     await router.push("/");
@@ -25,7 +40,12 @@ describe("router", () => {
   it("has routes for vacancies, saved searches, and HH authorization", () => {
     const router = createAppRouter(async () => user);
     expect(router.getRoutes().map((route) => route.path)).toEqual(
-      expect.arrayContaining(["/vacancies", "/saved-searches", "/login", "/account"]),
+      expect.arrayContaining([
+        "/vacancies",
+        "/saved-searches",
+        "/login",
+        "/account",
+      ]),
     );
   });
 
