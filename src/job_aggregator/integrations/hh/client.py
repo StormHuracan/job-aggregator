@@ -10,6 +10,7 @@ from pydantic import ValidationError
 from requests import PreparedRequest, RequestException, Response, Session
 
 from job_aggregator.integrations.hh.dto import (
+    HHUserProfile,
     HHVacancyPage,
     HHVacancySearchParams,
 )
@@ -136,6 +137,31 @@ class HHAPIClient:
             access_expires_at=datetime.fromtimestamp(expires_at, tz=UTC),
         )
 
+    async def get_current_user(self) -> HHUserProfile:
+        """Получить профиль владельца токена; ошибки HH сохраняют классификацию."""
+        data = await self.request("GET", "/me")
+        if not isinstance(data, dict):
+            raise HHPermanentRequestError("HH invalid profile")
+        identity = data.get("id")
+        if isinstance(identity, bool) or not isinstance(identity, (str, int)):
+            raise HHPermanentRequestError("HH invalid profile")
+        if isinstance(identity, int) and identity <= 0:
+            raise HHPermanentRequestError("HH invalid profile")
+        hh_user_id = str(identity).strip()
+        if not hh_user_id or len(hh_user_id) > 255:
+            raise HHPermanentRequestError("HH invalid profile")
+        parts = []
+        for field in ("first_name", "middle_name", "last_name"):
+            value = data.get(field)
+            if value is not None and not isinstance(value, str):
+                raise HHPermanentRequestError("HH invalid profile")
+            if value and value.strip():
+                parts.append(value.strip())
+        display_name = " ".join(parts) or hh_user_id
+        if len(display_name) > 255:
+            raise HHPermanentRequestError("HH invalid profile")
+        return HHUserProfile(hh_user_id=hh_user_id, display_name=display_name)
+
 
 class HHOAuthClient:
     """Изолированный async-клиент для OAuth-операций HH.ru."""
@@ -159,16 +185,33 @@ class HHOAuthClient:
         return client.authorize_url
 
     async def exchange_code(self, code: str, redirect_uri: str) -> HHAccountTokenData:
-        client = hh_api.OAuthClient(
-            client_id=self._client_id,
-            client_secret=self._client_secret,
-            redirect_uri=redirect_uri,
-        )
-        try:
-            token = await asyncio.to_thread(client.authenticate, code)
-        except (hh_api.BadResponse, RequestException) as ex:
-            raise classify_error(ex) from ex
-        return _token_from_oauth_response(token)
+        """Обменять одноразовый code без retry; HTTP-сессия закрывается всегда."""
+        with _TimeoutSession() as http_session:
+            client = hh_api.OAuthClient(
+                client_id=self._client_id,
+                client_secret=self._client_secret,
+                redirect_uri=redirect_uri,
+                session=http_session,
+            )
+            try:
+                token = await asyncio.to_thread(client.authenticate, code)
+                if not isinstance(token, dict) or any(
+                    not isinstance(token.get(key), str) or not token[key].strip()
+                    for key in ("access_token", "refresh_token")
+                ):
+                    raise ValueError("invalid token data")
+                return _token_from_oauth_response(token)
+            except (hh_api.BadResponse, RequestException) as ex:
+                raise classify_error(ex) from ex
+            except (
+                AttributeError,
+                KeyError,
+                ValueError,
+                TypeError,
+                OverflowError,
+                OSError,
+            ) as ex:
+                raise HHPermanentRequestError("HH invalid token response") from ex
 
 
 def _parse_published_at(value: Any) -> datetime | None:

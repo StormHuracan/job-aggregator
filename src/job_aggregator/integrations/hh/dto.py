@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from typing import Annotated
 
 from pydantic import BaseModel, Field, StringConstraints
@@ -24,3 +25,9 @@ class HHVacancyPage(BaseModel):
     page: int = Field(ge=0)
     found: int = Field(ge=0)
     pages: int = Field(ge=0)
+
+
+@dataclass(frozen=True, slots=True)
+class HHUserProfile:
+    hh_user_id: str
+    display_name: str

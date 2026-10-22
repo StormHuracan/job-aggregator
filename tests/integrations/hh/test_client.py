@@ -287,3 +287,156 @@ async def test_api_client_retries_temporary_library_error(
     assert result == {"ok": True}
     assert calls == 3
     assert delays == [0.5, 1.0]
+
+
+@pytest.mark.parametrize("invalid_id", [True, False, [], {}, 1.5, "", " ", None, -1, 0])
+async def test_current_user_rejects_invalid_identity(fake_api, invalid_id) -> None:
+    from job_aggregator.integrations.hh.errors import HHPermanentRequestError
+
+    client = HHAPIClient(_dto(), allow_token_refresh=False)
+    fake_api.instances[-1].response = {"id": invalid_id, "first_name": "Иван"}
+    try:
+        with pytest.raises(HHPermanentRequestError):
+            await client.get_current_user()
+    finally:
+        client.close()
+
+
+@pytest.mark.parametrize(
+    ("payload", "expected_id", "expected_name"),
+    [
+        (
+            {
+                "id": "123",
+                "first_name": " Иван ",
+                "middle_name": "Иванович",
+                "last_name": "Иванов",
+            },
+            "123",
+            "Иван Иванович Иванов",
+        ),
+        ({"id": 123, "first_name": None, "last_name": " "}, "123", "123"),
+    ],
+)
+async def test_current_user_normalizes_profile(
+    fake_api, payload, expected_id, expected_name
+) -> None:
+    client = HHAPIClient(_dto(), allow_token_refresh=False)
+    fake_api.instances[-1].response = payload
+    try:
+        profile = await client.get_current_user()
+        assert profile.hh_user_id == expected_id
+        assert profile.display_name == expected_name
+        assert fake_api.instances[-1].request_calls == [("GET", "/me", None)]
+    finally:
+        client.close()
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        [],
+        None,
+        {"id": "123", "first_name": {}},
+        {"id": "x" * 256},
+        {"id": "123", "last_name": "x" * 256},
+    ],
+)
+async def test_current_user_rejects_malformed_profile(fake_api, payload) -> None:
+    from job_aggregator.integrations.hh.errors import HHPermanentRequestError
+
+    client = HHAPIClient(_dto(), allow_token_refresh=False)
+    fake_api.instances[-1].response = payload
+    try:
+        with pytest.raises(HHPermanentRequestError, match="HH invalid profile"):
+            await client.get_current_user()
+    finally:
+        client.close()
+
+
+async def test_oauth_exchange_uses_bounded_timeout_and_closes_transport(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen = []
+    closed = []
+    from requests import Session
+
+    original_close = Session.close
+
+    def close(session) -> None:
+        closed.append(session)
+        original_close(session)
+
+    def send(adapter, request, **kwargs):
+        seen.append(kwargs.get("timeout"))
+        response = Response()
+        response.status_code = 200
+        response._content = (
+            b'{"access_token":"test-access","refresh_token":"test-refresh",'
+            b'"expires_in":3600}'
+        )
+        response.request = request
+        response.url = request.url
+        return response
+
+    monkeypatch.setattr(Session, "close", close)
+    monkeypatch.setattr(HTTPAdapter, "send", send)
+    result = await HHOAuthClient(
+        client_id="test-id", client_secret="test-secret"
+    ).exchange_code("test-code", "https://example.test/callback")
+    assert result.access_token == "test-access"
+    assert seen == [(5, 30)]
+    assert len(closed) == 1
+
+
+@pytest.mark.parametrize(
+    "response_body",
+    [b"[]", b"{}", b'{"access_token":"a","refresh_token":"r","expires_in":"invalid"}'],
+)
+async def test_malformed_oauth_response_is_safe(
+    monkeypatch: pytest.MonkeyPatch, response_body: bytes
+) -> None:
+    from job_aggregator.integrations.hh.errors import HHPermanentRequestError
+
+    def send(adapter, request, **kwargs):
+        response = Response()
+        response.status_code = 200
+        response._content = response_body
+        response.request = request
+        response.url = request.url
+        return response
+
+    monkeypatch.setattr(HTTPAdapter, "send", send)
+    with pytest.raises(HHPermanentRequestError, match="HH invalid token response"):
+        await HHOAuthClient(
+            client_id="test-id", client_secret="test-secret"
+        ).exchange_code("private-code", "https://example.test/callback")
+
+
+async def test_oauth_network_failure_is_not_retried_and_closes_transport(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from requests import Session
+
+    from job_aggregator.integrations.hh.errors import HHTemporaryError
+
+    closed = []
+    attempts = []
+    original_close = Session.close
+
+    def close(session: Session) -> None:
+        closed.append(session)
+        original_close(session)
+
+    def send(adapter, request, **kwargs):
+        attempts.append(request)
+        raise ConnectionError("private-network-details")
+
+    monkeypatch.setattr(Session, "close", close)
+    monkeypatch.setattr(HTTPAdapter, "send", send)
+    with pytest.raises(HHTemporaryError, match="HH network error"):
+        await HHOAuthClient(
+            client_id="test-id", client_secret="test-secret"
+        ).exchange_code("private-code", "https://example.test/callback")
+    assert len(attempts) == 1
+    assert len(closed) == 1
