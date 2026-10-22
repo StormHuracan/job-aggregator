@@ -176,13 +176,15 @@ class HHOAuthClient:
         self._client_secret = client_secret
 
     def get_authorization_url(self, redirect_uri: str, state: str) -> str:
-        client = hh_api.OAuthClient(
-            client_id=self._client_id,
-            client_secret=self._client_secret,
-            redirect_uri=redirect_uri,
-            state=state,
-        )
-        return client.authorize_url
+        with _TimeoutSession() as http_session:
+            client = hh_api.OAuthClient(
+                client_id=self._client_id,
+                client_secret=self._client_secret,
+                redirect_uri=redirect_uri,
+                state=state,
+                session=http_session,
+            )
+            return client.authorize_url
 
     async def exchange_code(self, code: str, redirect_uri: str) -> HHAccountTokenData:
         """Обменять одноразовый code без retry; HTTP-сессия закрывается всегда."""

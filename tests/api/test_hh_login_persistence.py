@@ -81,7 +81,7 @@ async def test_login_commits_unique_state_before_redirect(
 @pytest.mark.parametrize(
     "missing", ["hh_client_id", "hh_client_secret", "hh_redirect_uri"]
 )
-async def test_incomplete_configuration_returns_503_without_state(
+async def test_missing_settings_use_sdk_defaults(
     app: FastAPI,
     async_client: AsyncClient,
     login_dependencies: async_sessionmaker[AsyncSession],
@@ -97,9 +97,10 @@ async def test_incomplete_configuration_returns_503_without_state(
 
     response = await async_client.get("/auth/hh/login", follow_redirects=False)
 
-    assert response.status_code == 503
-    assert response.json() == {"detail": "Авторизация временно недоступна"}
-    assert "location" not in response.headers
+    assert response.status_code == 307
+    query = parse_qs(urlparse(response.headers["location"]).query)
+    assert query["client_id"][0]
+    assert ("redirect_uri" in query) == (missing != "hh_redirect_uri")
     assert "test-secret" not in response.text
     async with login_dependencies() as session:
-        assert await session.scalar(select(func.count()).select_from(OAuthState)) == 0
+        assert await session.scalar(select(func.count()).select_from(OAuthState)) == 1

@@ -25,8 +25,6 @@ def get_auth_session_service(
 
 
 def get_hh_oauth_client(settings: Settings = Depends(get_settings)) -> HHOAuthClient:
-    if not settings.hh_client_id or not settings.hh_client_secret:
-        raise HTTPException(status_code=503, detail="Авторизация временно недоступна")
     client = HHOAuthClient(
         client_id=settings.hh_client_id,
         client_secret=settings.hh_client_secret,

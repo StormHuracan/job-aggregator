@@ -9,8 +9,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from job_aggregator.api.dependencies import (
     _set_session_cookie,
     get_auth_session_service,
-    get_hh_oauth_client,
     get_current_user,
+    get_hh_oauth_client,
 )
 from job_aggregator.core.config import Settings, get_settings
 from job_aggregator.db.models.user import User
@@ -52,15 +52,9 @@ async def hh_login(
     session: AuthSessionService = Depends(get_auth_session_service),
     async_session: AsyncSession = Depends(get_db_session),
 ) -> RedirectResponse:
-    if not settings.hh_redirect_uri:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Авторизация временно недоступна",
-        )
-
     raw_state = await session.create_oauth_state()
     authorization_url = client.get_authorization_url(
-        redirect_uri=settings.hh_redirect_uri,
+        redirect_uri=settings.hh_redirect_uri or "",
         state=raw_state,
     )
     await async_session.commit()
@@ -80,8 +74,6 @@ async def hh_oauth_callback(
     auth_service: AuthSessionService = Depends(get_auth_session_service),
 ) -> RedirectResponse:
     """Потребить state и атомарно сохранить персональное подключение и сессию."""
-    if not settings.hh_redirect_uri:
-        raise HTTPException(503, "Авторизация временно недоступна")
     if not code.strip() or not state.strip():
         raise HTTPException(400, "Некорректные параметры авторизации")
     try:
@@ -99,7 +91,7 @@ async def hh_oauth_callback(
             400, "Ссылка авторизации недействительна или уже использована"
         )
     try:
-        tokens = await oauth_client.exchange_code(code, settings.hh_redirect_uri)
+        tokens = await oauth_client.exchange_code(code, settings.hh_redirect_uri or "")
         client = HHAPIClient(tokens, allow_token_refresh=False)
         try:
             profile = await client.get_current_user()

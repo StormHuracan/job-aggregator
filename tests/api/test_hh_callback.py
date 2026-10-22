@@ -285,7 +285,7 @@ async def test_production_cookie_is_secure(
 @pytest.mark.parametrize(
     "missing", ["hh_client_id", "hh_client_secret", "hh_redirect_uri"]
 )
-async def test_missing_configuration_never_exchanges_code(
+async def test_missing_configuration_uses_sdk_defaults(
     app: FastAPI, async_client: AsyncClient, callback_db, missing: str
 ) -> None:
     settings = app.dependency_overrides[get_settings]()
@@ -296,8 +296,10 @@ async def test_missing_configuration_never_exchanges_code(
     response = await async_client.get(
         "/auth/hh/callback", params={"code": "private-code", "state": state}
     )
-    assert response.status_code == 503
-    HHOAuthClient.exchange_code.assert_not_awaited()
+    assert response.status_code == 303
+    HHOAuthClient.exchange_code.assert_awaited_once_with(
+        "private-code", settings.hh_redirect_uri if missing != "hh_redirect_uri" else ""
+    )
     async with callback_db() as session:
         record = await session.scalar(select(OAuthState))
-        assert record.consumed_at is None
+        assert record.consumed_at is not None
