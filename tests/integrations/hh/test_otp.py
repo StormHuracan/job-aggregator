@@ -149,6 +149,42 @@ async def test_captcha_redirect_cannot_send_answer_outside_hh(otp):
     otp._request.assert_awaited_once()
 
 
+async def test_captcha_upgrades_hh_http_location_without_plain_http(otp, caplog):
+    caplog.set_level("INFO", logger="job_aggregator.integrations.hh.otp")
+    otp._captcha_state = "private-state"
+    otp._request.side_effect = [
+        _Reply(302, {"Location": "http://hh.ru:80/?state=private-state"}, b""),
+        _Reply(200, {}, b""),
+        response({"success": True}),
+    ]
+    assert (await otp.solve_captcha("private-answer")).step == "code"
+    follow = otp._request.call_args_list[1]
+    assert follow.args == ("GET", "https://hh.ru/?state=private-state")
+    assert "private-" not in caplog.text
+    assert "http://" not in caplog.text
+
+
+@pytest.mark.parametrize(
+    "location",
+    [
+        "http://private-secret.evil.test/?code=private-code",
+        "http://private-secret@hh.ru/",
+        "http://hh.ru:8443/",
+        "https://hh.ru:invalid/",
+    ],
+)
+async def test_captcha_https_upgrade_does_not_expand_redirect_trust(
+    otp, location, caplog
+):
+    caplog.set_level("INFO", logger="job_aggregator.integrations.hh.otp")
+    otp._captcha_state = "state"
+    otp._request.return_value = _Reply(302, {"Location": location}, b"")
+    with pytest.raises(HHPermanentRequestError):
+        await otp.solve_captcha("private-answer")
+    otp._request.assert_awaited_once()
+    assert "private-" not in caplog.text
+
+
 async def test_captcha_redirect_loop_is_bounded(otp):
     otp._captcha_state = "state"
     otp._request.return_value = _Reply(302, {"Location": "/"}, b"")

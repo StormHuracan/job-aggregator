@@ -75,6 +75,32 @@ def _hh_url(url: str) -> str:
     return url
 
 
+def _captcha_redirect_url(base: str, location: str) -> str:
+    try:
+        parsed = urlsplit(urljoin(base, location))
+        port = parsed.port
+    except ValueError:
+        logger.warning("HH OTP captcha redirect rejected: reason=malformed")
+        raise HHPermanentRequestError("HH invalid redirect") from None
+    hh_host = bool(
+        parsed.hostname
+        and (parsed.hostname == "hh.ru" or parsed.hostname.endswith(".hh.ru"))
+    )
+    credentials = bool(parsed.username or parsed.password)
+    # Даже неожиданный host может содержать секрет: логируем только признаки.
+    logger.info(
+        "HH OTP captcha redirect: scheme=%s hh_host=%s port=%s credentials=%s",
+        parsed.scheme if parsed.scheme in ("http", "https") else "other",
+        hh_host,
+        port if port in (80, 443) else "default" if port is None else "other",
+        credentials,
+    )
+    if parsed.scheme == "http" and hh_host and port in (None, 80) and not credentials:
+        # Не выполняем небезопасный HTTP-переход, даже если его прислал HH.
+        parsed = parsed._replace(scheme="https", netloc=parsed.hostname)
+    return _hh_url(parsed.geturl())
+
+
 def _nested(data: dict, key: str) -> dict:
     value = data.get(key)
     if value is None:
@@ -271,8 +297,11 @@ class HHOTPClient:
                 break
             location = response.headers.get("Location")
             if not location:
+                logger.warning(
+                    "HH OTP captcha redirect rejected: reason=missing_location"
+                )
                 raise HHPermanentRequestError("HH captcha redirect missing")
-            url = _hh_url(urljoin(url, location))
+            url = _captcha_redirect_url(url, location)
             if response.status in (301, 302, 303):
                 method = "GET"
             response = await self._request(
