@@ -24,19 +24,22 @@ export function useAccount() {
   const actionError = ref(false);
   const fieldErrors = ref<Readonly<Record<string, string>>>({});
   let active = true;
-  let expired = false;
-  const isActive = () => active && !expired;
+  const sessionExpired = ref(false);
+  const isActive = () => active && !sessionExpired.value;
   onScopeDispose(() => {
     active = false;
   });
 
   async function failure(cause: unknown): Promise<string> {
     if (isActive() && cause instanceof ApiError && cause.status === 401) {
-      expired = true;
+      sessionExpired.value = true;
       user.value = null;
       feedback.value = "";
       fieldErrors.value = {};
-      await router.replace({ path: "/login", query: { redirect: returnTo } });
+      await router.replace({
+        path: "/login",
+        query: { redirect: returnTo, reason: "session-expired" },
+      });
     }
     return cause instanceof ApiError
       ? cause.message
@@ -129,7 +132,7 @@ export function useAccount() {
       async () => {
         await logout();
         if (!isActive()) return;
-        expired = true;
+        sessionExpired.value = true;
         user.value = null;
         await router.replace("/login");
       },
@@ -145,6 +148,7 @@ export function useAccount() {
   onMounted(load);
   return {
     user,
+    sessionExpired,
     loading,
     error,
     defaultArea,

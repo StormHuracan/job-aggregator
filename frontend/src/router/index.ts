@@ -40,13 +40,22 @@ export function createAppRouter(
   router.beforeEach(async (to) => {
     if (!to.meta.requiresAuth) return true;
     try {
-      await loadCurrentUser();
-      return true;
-    } catch (error) {
-      if (error instanceof ApiError && error.status === 401) {
-        return { path: "/login", query: { redirect: to.fullPath } };
+      const user = await loadCurrentUser();
+      if (!user || !Number.isSafeInteger(user.id) || user.id <= 0) {
+        throw new Error("Invalid session response");
       }
       return true;
+    } catch (error) {
+      return {
+        path: "/login",
+        query: {
+          redirect: to.fullPath,
+          reason:
+            error instanceof ApiError && error.status === 401
+              ? "auth-required"
+              : "session-check-failed",
+        },
+      };
     }
   });
 

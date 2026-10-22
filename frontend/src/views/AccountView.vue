@@ -1,5 +1,5 @@
 <template>
-  <section aria-labelledby="account-heading">
+  <section v-if="!sessionExpired" aria-labelledby="account-heading">
     <div class="page-heading">
       <div>
         <h1 id="account-heading">Личный кабинет</h1>
@@ -156,6 +156,7 @@ import UiButton from "../components/ui/UiButton.vue";
 import { useAccount } from "../composables/useAccount";
 const {
   user,
+  sessionExpired,
   loading,
   error,
   defaultArea,

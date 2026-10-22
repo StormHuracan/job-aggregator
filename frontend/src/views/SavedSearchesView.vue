@@ -1,5 +1,5 @@
 <template>
-  <section aria-labelledby="saved-heading">
+  <section v-if="!sessionExpired" aria-labelledby="saved-heading">
     <div class="page-heading">
       <div>
         <h1 id="saved-heading">Сохранённые поиски</h1>
@@ -84,6 +84,7 @@ import UiAlert from "../components/ui/UiAlert.vue";
 import UiButton from "../components/ui/UiButton.vue";
 import { useSavedSearches } from "../composables/useSavedSearches";
 const {
+  sessionExpired,
   createSearch,
   searches,
   setEnabled,

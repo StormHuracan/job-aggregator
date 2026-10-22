@@ -1,5 +1,5 @@
 <template>
-  <section aria-labelledby="vacancies-heading">
+  <section v-if="!sessionExpired" aria-labelledby="vacancies-heading">
     <div class="page-heading">
       <div>
         <h1 id="vacancies-heading">Работа для разработчиков</h1>
@@ -251,16 +251,20 @@ const loadError = ref<string | null>(null);
 const result = ref<VacancyListResponse | null>(null);
 let requestId = 0;
 let active = true;
+const sessionExpired = ref(false);
 onScopeDispose(() => {
   active = false;
   requestId++;
 });
 async function message(error: unknown): Promise<string> {
-  if (active && error instanceof ApiError && error.status === 401)
+  if (active && error instanceof ApiError && error.status === 401) {
+    sessionExpired.value = true;
+    result.value = null;
     await router.replace({
       path: "/login",
-      query: { redirect: route.fullPath },
+      query: { redirect: route.fullPath, reason: "session-expired" },
     });
+  }
   return error instanceof ApiError
     ? error.message
     : "Не удалось загрузить вакансии. Попробуйте ещё раз.";
@@ -281,7 +285,8 @@ async function load(): Promise<void> {
       limit: limit.value,
       offset: offset.value,
     });
-    if (active && id === requestId) result.value = data;
+    if (active && !sessionExpired.value && id === requestId)
+      result.value = data;
   } catch (error) {
     if (active && id === requestId) loadError.value = await message(error);
   } finally {
@@ -291,7 +296,7 @@ async function load(): Promise<void> {
 watch(
   () => route.fullPath,
   () => {
-    if (route.path !== "/vacancies") return;
+    if (route.path !== "/vacancies" || sessionExpired.value) return;
     text.value = String(route.query.text ?? "");
     company.value = String(route.query.company ?? "");
     area.value = String(route.query.area ?? "");

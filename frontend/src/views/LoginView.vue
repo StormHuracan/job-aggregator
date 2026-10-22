@@ -41,9 +41,13 @@
       <p class="login-copy">
         Войдите через HH.ru, чтобы работать со своими сохранёнными поисками.
       </p>
-      <UiAlert v-if="route.query.error" tone="error"
-        >Не удалось завершить вход. Попробуйте подключиться ещё раз.</UiAlert
-      ><UiButton :disabled="pending" :busy="pending" @click="startLogin"
+      <UiAlert v-if="authMessage" :tone="route.query.reason === 'session-check-failed' || route.query.error ? 'error' : 'info'">
+        {{ authMessage }}
+      </UiAlert>
+      <UiButton v-if="route.query.reason === 'session-check-failed'" class="retry-session" variant="secondary" :disabled="retrying" @click="retrySession">
+        {{ retrying ? "Проверяем вход…" : "Повторить проверку" }}
+      </UiButton>
+      <UiButton :disabled="pending" :busy="pending" @click="startLogin"
         >{{ pending ? "Переходим на HH.ru…" : "Продолжить с HH.ru" }}
         <span aria-hidden="true">↗</span></UiButton
       >
@@ -62,12 +66,43 @@
   </section>
 </template>
 <script setup lang="ts">
-import { onScopeDispose, ref } from "vue";
-import { useRoute } from "vue-router";
+import { computed, onScopeDispose, ref } from "vue";
+import { useRoute, useRouter } from "vue-router";
 import UiAlert from "../components/ui/UiAlert.vue";
 import UiButton from "../components/ui/UiButton.vue";
 const route = useRoute();
+const router = useRouter();
 const pending = ref(false);
+const retrying = ref(false);
+const authMessage = computed(() => {
+  if (route.query.reason === "session-check-failed")
+    return "Не удалось проверить вход. Защищённые данные не загружены. Попробуйте ещё раз.";
+  if (route.query.reason === "auth-required")
+    return "Для просмотра этого раздела войдите через HH.ru.";
+  if (route.query.reason === "session-expired")
+    return "Сессия истекла. Войдите снова, чтобы продолжить.";
+  return route.query.error
+    ? "Не удалось завершить вход. Попробуйте подключиться ещё раз."
+    : "";
+});
+async function retrySession(): Promise<void> {
+  if (retrying.value) return;
+  retrying.value = true;
+  const target = route.query.redirect;
+  const internal =
+    typeof target === "string" &&
+    target.startsWith("/") &&
+    !target.startsWith("//");
+  try {
+    await router.replace(
+      internal && router.resolve(target).meta.requiresAuth
+        ? target
+        : "/account",
+    );
+  } finally {
+    retrying.value = false;
+  }
+}
 function resetPending(): void {
   pending.value = false;
 }
@@ -136,6 +171,9 @@ function startLogin(): void {
 }
 .login-card button {
   width: 100%;
+}
+.retry-session {
+  margin-bottom: 12px;
 }
 .login-explanation {
   border-top: 1px solid var(--color-border);

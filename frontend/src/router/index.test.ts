@@ -69,4 +69,52 @@ describe("router", () => {
       query: { redirect: "/account" },
     });
   });
+  it.each([0, 404, 503, 200])(
+    "blocks protected pages when checking the session fails (%s)",
+    async (status) => {
+      const router = createAppRouter(async () => {
+        throw new ApiError(status, "private error");
+      });
+      await router.push("/vacancies?text=Python");
+      expect(router.currentRoute.value).toMatchObject({
+        path: "/login",
+        query: {
+          redirect: "/vacancies?text=Python",
+          reason: "session-check-failed",
+        },
+      });
+    },
+  );
+
+  it("waits for successful session verification before entering a protected page", async () => {
+    let finish!: (value: CurrentUser) => void;
+    const router = createAppRouter(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    await router.push("/login");
+    const navigation = router.push("/account");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(router.currentRoute.value.path).toBe("/login");
+    finish(user);
+    await navigation;
+    expect(router.currentRoute.value.path).toBe("/account");
+  });
+  it.each([null, {}, { id: -1 }])(
+    "rejects a malformed successful session response",
+    async (payload) => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValue(new Response(JSON.stringify(payload))),
+      );
+      const router = createAppRouter();
+      await router.push("/vacancies");
+      expect(router.currentRoute.value).toMatchObject({
+        path: "/login",
+        query: { reason: "session-check-failed" },
+      });
+    },
+  );
 });

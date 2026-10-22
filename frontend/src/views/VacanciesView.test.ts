@@ -151,4 +151,33 @@ describe("Vacancies API search", () => {
     await flushPromises();
     expect(router.currentRoute.value.query.offset).toBe("0");
   });
+  it("hides previously loaded vacancies immediately when collection returns 401", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce(response(list()))
+        .mockResolvedValueOnce(response({}, 401)),
+    );
+    const router = await open();
+    expect(wrapper.text()).toContain("Python developer");
+    let finish!: (allow: boolean) => void;
+    router.beforeEach((to) =>
+      to.path === "/login"
+        ? new Promise<boolean>((resolve) => {
+            finish = resolve;
+          })
+        : true,
+    );
+    await wrapper.get(".source-toggle").trigger("click");
+    await wrapper.get(".collection-form input").setValue("Python");
+    await wrapper.get(".collection-form").trigger("submit");
+    await flushPromises();
+    expect(router.currentRoute.value.path).toBe("/vacancies");
+    expect(wrapper.find("#vacancies-heading").exists()).toBe(false);
+    expect(wrapper.text()).not.toContain("Python developer");
+    finish(true);
+    await flushPromises();
+    expect(router.currentRoute.value.query.reason).toBe("session-expired");
+  });
 });
