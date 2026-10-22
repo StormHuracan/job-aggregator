@@ -149,11 +149,12 @@ class HHOAuthClient:
         self._client_id = client_id
         self._client_secret = client_secret
 
-    def get_authorization_url(self, redirect_uri: str) -> str:
+    def get_authorization_url(self, redirect_uri: str, state: str) -> str:
         client = hh_api.OAuthClient(
             client_id=self._client_id,
             client_secret=self._client_secret,
             redirect_uri=redirect_uri,
+            state=state,
         )
         return client.authorize_url
 

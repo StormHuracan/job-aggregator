@@ -220,11 +220,12 @@ def test_oauth_client_builds_authorization_url(
     fake_oauth: type[_FakeOAuthClient],
 ) -> None:
     client = HHOAuthClient(client_id="cid", client_secret="cs")
-    url = client.get_authorization_url("https://example.com/callback")
+    url = client.get_authorization_url("https://example.com/callback", "test-state")
 
     assert url.startswith("https://hh.ru/oauth/authorize?")
     assert "client_id=cid" in url
     assert "redirect_uri=https%3A%2F%2Fexample.com%2Fcallback" in url
+    assert fake_oauth.instances[-1].init_kwargs["state"] == "test-state"
 
 
 async def test_oauth_client_exchanges_code(
