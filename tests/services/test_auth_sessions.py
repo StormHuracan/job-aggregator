@@ -21,13 +21,14 @@ async def test_oauth_state_is_consumed_once_and_raw_value_is_not_stored(
     service = AuthSessionService(sqlite_session)
 
     state = await service.create_oauth_state()
+    state_1 = await service.create_oauth_state()
     stored_state = await sqlite_session.scalar(select(OAuthState))
 
     assert stored_state is not None
     assert stored_state.state_hash != state
     assert await service.consume_oauth_state(state) is True
     assert await service.consume_oauth_state(state) is False
-
+    assert state != state_1
 
 async def test_expired_oauth_state_cannot_be_consumed(
     sqlite_session: AsyncSession,
