@@ -52,6 +52,7 @@ async def sqlite_session() -> AsyncIterator[AsyncSession]:
         auth_session,
         hh_account,
         saved_search,
+        saved_search_match,
         user,
         vacancy,
     )
