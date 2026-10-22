@@ -42,7 +42,7 @@ class CurrentUserResponse(BaseModel):
     display_name: str
     hh_connected: bool
     access_expires_at: datetime | None
-    new_matches_count: int = Field(ge=0)
+    new_matches_count: int | None = Field(ge=0)
     settings: UserSettingsResponse
 
     @field_validator("access_expires_at")

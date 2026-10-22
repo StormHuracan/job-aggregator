@@ -10,9 +10,10 @@ from job_aggregator.api.dependencies import (
     _set_session_cookie,
     get_auth_session_service,
     get_hh_oauth_client,
-    get_token_service,
+    get_current_user,
 )
 from job_aggregator.core.config import Settings, get_settings
+from job_aggregator.db.models.user import User
 from job_aggregator.db.repositories.hh_account import HHAccountRepository
 from job_aggregator.db.repositories.user import UserRepository
 from job_aggregator.db.session import get_db_session
@@ -24,7 +25,6 @@ from job_aggregator.integrations.hh.errors import (
 )
 from job_aggregator.schemas.hh_auth import HHAuthStatusResponse
 from job_aggregator.services.auth_sessions import AuthSessionService
-from job_aggregator.services.tokens import TokenService
 
 logger = logging.getLogger(__name__)
 
@@ -33,9 +33,10 @@ router = APIRouter(prefix="/auth/hh", tags=["auth"])
 
 @router.get("/status", response_model=HHAuthStatusResponse)
 async def hh_status(
-    token_service: TokenService = Depends(get_token_service),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db_session),
 ) -> HHAuthStatusResponse:
-    tokens = await token_service.get_current()
+    tokens = await HHAccountRepository(db).get_by_user_id(user.id)
     if tokens is None:
         return HHAuthStatusResponse(connected=False, access_expires_at=None)
     return HHAuthStatusResponse(

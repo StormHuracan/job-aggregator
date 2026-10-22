@@ -1,99 +1,49 @@
-from datetime import UTC, datetime, timedelta
-from unittest.mock import AsyncMock, MagicMock
+from datetime import UTC, datetime
 
-from fastapi import FastAPI
-from fastapi.testclient import TestClient
+import pytest
 
-from job_aggregator.api.dependencies import get_token_service
-from job_aggregator.schemas.hh_token import HHAccountTokenData
-from job_aggregator.services.tokens import TokenService
+from job_aggregator.api.dependencies import SESSION_COOKIE_NAME
+from job_aggregator.db.repositories.hh_account import HHAccountRepository
+from job_aggregator.db.repositories.user import UserRepository
+from job_aggregator.db.session import get_db_session
+from job_aggregator.services.auth_sessions import AuthSessionService
 from tests.factories import make_token_data
 
-ENDPOINT = "/auth/hh/status"
-FUTURE_EXPIRY = datetime(2100, 1, 1, tzinfo=UTC)
-PAST_EXPIRY = datetime(2000, 1, 1, tzinfo=UTC)
+
+@pytest.fixture
+async def status_db(app, sqlite_session):
+    async def db():
+        yield sqlite_session
+
+    app.dependency_overrides[get_db_session] = db
+    return sqlite_session
 
 
-def _install_fake_token_service(
-    client: TestClient, tokens: HHAccountTokenData | None
-) -> MagicMock:
-    fake = MagicMock(spec=TokenService)
-    fake.get_current = AsyncMock(return_value=tokens)
-    fake.save = AsyncMock()
-    client.app.dependency_overrides[get_token_service] = lambda: fake
-    return fake
+async def test_status_requires_session(async_client, status_db):
+    assert (await async_client.get("/auth/hh/status")).status_code == 401
 
 
-def test_status_without_tokens(app: FastAPI, client: TestClient) -> None:
-    assert client.app is app
-    fake = _install_fake_token_service(client, None)
-    assert get_token_service in app.dependency_overrides
-
-    response = client.get(ENDPOINT)
-
-    assert response.status_code == 200, response.text
-    assert response.json() == {"connected": False, "access_expires_at": None}
-    fake.get_current.assert_awaited_once()
-    fake.save.assert_not_awaited()
-
-
-def test_status_with_valid_token(client: TestClient) -> None:
-    fake = _install_fake_token_service(
-        client, make_token_data(access_expires_at=FUTURE_EXPIRY)
-    )
-
-    response = client.get(ENDPOINT)
-
-    assert response.status_code == 200, response.text
-    body = response.json()
-    assert body["connected"] is True
-    parsed = datetime.fromisoformat(body["access_expires_at"].replace("Z", "+00:00"))
-    assert parsed.tzinfo is not None
-    assert parsed.utcoffset() == timedelta(0)
-    assert parsed == FUTURE_EXPIRY
-    fake.get_current.assert_awaited_once()
-    fake.save.assert_not_awaited()
-
-
-def test_status_with_expired_token(client: TestClient) -> None:
-    fake = _install_fake_token_service(
-        client, make_token_data(access_expires_at=PAST_EXPIRY)
-    )
-
-    response = client.get(ENDPOINT)
-
-    assert response.status_code == 200, response.text
-    body = response.json()
-    assert body["connected"] is True
-    parsed = datetime.fromisoformat(body["access_expires_at"].replace("Z", "+00:00"))
-    assert parsed == PAST_EXPIRY
-    fake.get_current.assert_awaited_once()
-    fake.save.assert_not_awaited()
-
-
-def test_status_response_contains_no_secrets(client: TestClient) -> None:
-    tokens = make_token_data(
-        access_token="ACCESS-SECRET",
-        refresh_token="REFRESH-SECRET",
-        access_expires_at=FUTURE_EXPIRY,
-    )
-    _install_fake_token_service(client, tokens)
-
-    response = client.get(ENDPOINT)
-
-    assert response.status_code == 200, response.text
-    assert set(response.json()) == {"connected", "access_expires_at"}
-    for secret in (tokens.access_token, tokens.refresh_token):
-        assert secret not in response.text
-
-
-def test_status_does_not_touch_hh_or_write(client: TestClient) -> None:
-    fake = _install_fake_token_service(
-        client, make_token_data(access_expires_at=PAST_EXPIRY)
-    )
-
-    response = client.get(ENDPOINT)
-
+@pytest.mark.parametrize(
+    "expiry", [None, datetime(2100, 1, 1, tzinfo=UTC), datetime(2000, 1, 1, tzinfo=UTC)]
+)
+async def test_status_reads_only_current_owner(async_client, status_db, expiry):
+    user = await UserRepository(status_db).get_or_create("current", "Current")
+    other = await UserRepository(status_db).get_or_create("other", "Other")
+    await HHAccountRepository(status_db).save(other.id, make_token_data())
+    if expiry:
+        await HHAccountRepository(status_db).save(
+            user.id, make_token_data(access_expires_at=expiry)
+        )
+    token = await AuthSessionService(status_db).create_session(user.id)
+    await status_db.commit()
+    async_client.cookies.set(SESSION_COOKIE_NAME, token)
+    response = await async_client.get("/auth/hh/status")
     assert response.status_code == 200
-    fake.save.assert_not_awaited()
-    fake.get_current.assert_awaited_once()
+    data = response.json()
+    assert set(data) == {"connected", "access_expires_at"}
+    assert data["connected"] == (expiry is not None)
+    assert (
+        datetime.fromisoformat(data["access_expires_at"])
+        if expiry
+        else data["access_expires_at"]
+    ) == expiry
