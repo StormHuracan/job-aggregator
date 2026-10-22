@@ -1,3 +1,4 @@
+import logging
 import re
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
@@ -28,6 +29,7 @@ from job_aggregator.services.otp_login import (
 )
 
 router = APIRouter(prefix="/auth/hh", tags=["auth"])
+logger = logging.getLogger(__name__)
 _COOKIE = "hh_otp_login"
 
 
@@ -180,7 +182,9 @@ async def solve_captcha(
     try:
         result = await service.captcha(request.cookies.get(_COOKIE), text)
     except (OTPExpired, OTPThrottled, HHIntegrationError) as error:
+        logger.warning("HH OTP captcha failed: category=%s", type(error).__name__)
         raise _error(error) from None
+    logger.info("HH OTP captcha next step: %s", result.step)
     response.headers["Cache-Control"] = "no-store"
     return _prompt(result)
 

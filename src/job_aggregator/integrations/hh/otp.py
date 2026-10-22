@@ -8,6 +8,7 @@ import asyncio
 import base64
 import html
 import json
+import logging
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -26,6 +27,8 @@ from job_aggregator.integrations.hh.errors import (
     HHTemporaryError,
 )
 from job_aggregator.schemas.hh_token import HHAccountTokenData
+
+logger = logging.getLogger(__name__)
 
 
 class OTPInvalidCode(HHIntegrationError):
@@ -251,13 +254,35 @@ class HHOTPClient:
             "backurl": "/",
             "fialurl": "/account/captcha?state=" + self._captcha_state,
         }
+        url = self._origin + "/account/captcha"
+        method = "POST"
         response = await self._request(
             "POST",
-            self._origin + "/account/captcha",
+            url,
             headers=self._headers,
             data=payload,
             params=payload,
         )
+        # requests в SDK следует редиректам автоматически. Здесь каждый hop
+        # проверяется отдельно, чтобы ответ капчи не ушёл за пределы HH.
+        for _ in range(6):
+            logger.info("HH OTP captcha response: status=%d", response.status)
+            if response.status not in (301, 302, 303, 307, 308):
+                break
+            location = response.headers.get("Location")
+            if not location:
+                raise HHPermanentRequestError("HH captcha redirect missing")
+            url = _hh_url(urljoin(url, location))
+            if response.status in (301, 302, 303):
+                method = "GET"
+            response = await self._request(
+                method,
+                url,
+                headers=self._headers,
+                **({"data": payload} if method == "POST" else {}),
+            )
+        else:
+            raise HHPermanentRequestError("HH captcha redirect limit")
         if response.status == 403:
             return await self._captcha(self._captcha_state, self._captcha_step)
         if response.status != 200:

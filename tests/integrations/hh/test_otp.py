@@ -120,6 +120,55 @@ async def test_captcha_is_presented_and_manual_answer_retries_send(otp):
     assert otp._request.call_args.kwargs["data"]["captchaState"] == "private-captcha"
 
 
+@pytest.mark.parametrize("status", [301, 302, 303, 307, 308])
+async def test_captcha_follows_hh_redirect_without_leaking_answer(otp, status, caplog):
+    caplog.set_level("INFO", logger="job_aggregator.integrations.hh.otp")
+    otp._captcha_state = "private-state"
+    otp._captcha_key = "private-key"
+    otp._request.side_effect = [
+        _Reply(status, {"Location": "/"}, b""),
+        _Reply(200, {}, b"<html></html>"),
+        response({"success": True}),
+    ]
+    assert (await otp.solve_captcha("private-answer")).step == "code"
+    follow = otp._request.call_args_list[1]
+    assert follow.args == ("POST" if status in (307, 308) else "GET", "https://hh.ru/")
+    if status in (301, 302, 303):
+        assert "data" not in follow.kwargs
+        assert "params" not in follow.kwargs
+    assert "private-" not in caplog.text
+
+
+async def test_captcha_redirect_cannot_send_answer_outside_hh(otp):
+    otp._captcha_state = "state"
+    otp._request.return_value = _Reply(
+        307, {"Location": "https://evil.test/collect"}, b""
+    )
+    with pytest.raises(HHPermanentRequestError):
+        await otp.solve_captcha("private-answer")
+    otp._request.assert_awaited_once()
+
+
+async def test_captcha_redirect_loop_is_bounded(otp):
+    otp._captcha_state = "state"
+    otp._request.return_value = _Reply(302, {"Location": "/"}, b"")
+    with pytest.raises(HHPermanentRequestError, match="redirect limit"):
+        await otp.solve_captcha("answer")
+    assert otp._request.await_count <= 7
+
+
+async def test_rejected_captcha_returns_another_challenge_not_success(otp):
+    otp._captcha_state = "state"
+    otp._request.side_effect = [
+        _Reply(403, {}, b""),
+        response({"key": "next-key"}),
+        _Reply(200, {"Content-Type": "image/png"}, b"png"),
+    ]
+    result = await otp.solve_captcha("wrong-answer")
+    assert result.step == "captcha"
+    assert result.captcha_image.startswith("data:image/png;base64,")
+
+
 @pytest.mark.parametrize(
     "url",
     [
