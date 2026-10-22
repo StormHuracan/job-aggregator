@@ -11,7 +11,7 @@ from requests import RequestException
 
 from job_aggregator.integrations.hh.dto import (
     HHVacancyPage,
-    HHVacancySearchParams,
+    HHVacancySearchParams, HHUserProfile,
 )
 from job_aggregator.integrations.hh.errors import (
     HHPermanentRequestError,
@@ -63,6 +63,8 @@ class HHAPIClient:
         self._tokens = tokens
         self._allow_token_refresh = allow_token_refresh
         self._retry_sleep = retry_sleep
+        self._client_id = client_id
+        self._client_secret = client_secret
 
         kwargs: dict[str, Any] = _dto_to_library_kwargs(tokens)
         if allow_token_refresh:
@@ -112,6 +114,51 @@ class HHAPIClient:
             access_token=access,
             refresh_token=refresh,
             access_expires_at=datetime.fromtimestamp(expires_at, tz=UTC),
+        )
+
+    async def get_current_user(self) -> HHUserProfile:
+        """Выполняет авторизованный GET /me с полученным access token
+        и возвращает нормализованный HHUserProfile.
+        """
+        try:
+            # Выполняем запрос через существующий метод интеграции.
+            # Он уже берет на себя asyncio.to_thread, retry_hh_request,
+            # classify_error(ex) и обновление токенов в self._tokens.
+            data = await self.request("GET", "/me")
+        except Exception as ex:
+            # Любая ошибка запроса или классификации оборачивается в HHPermanentRequestError
+            # без raw response в сообщении, как того требуют условия.
+            raise HHPermanentRequestError("Failed to fetch user profile from HH API") from ex
+
+        # Проверяем, что пришел словарь (базовая защита от некорректного ответа библиотеки)
+        if not isinstance(data, dict):
+            raise HHPermanentRequestError("HH API returned an invalid profile response format")
+
+        # 1. Валидация id: принимается только непустой стабильный id
+        user_id = data.get("id")
+        if not user_id or not str(user_id).strip():
+            raise HHPermanentRequestError("HH API returned a profile without a valid ID")
+
+        hh_user_id = str(user_id).strip()
+
+        # 2. Формирование display_name из непустых first_name, last_name, middle_name
+        name_parts = [
+            data.get("first_name"),
+            data.get("middle_name"),
+            data.get("last_name"),
+        ]
+        # Отсекаем None и пустые строки
+        valid_parts = [str(part).strip() for part in name_parts if part and str(part).strip()]
+
+        if valid_parts:
+            display_name = " ".join(valid_parts)
+        else:
+            # При отсутствии имени используется строковое значение id
+            display_name = hh_user_id
+
+        return HHUserProfile(
+            hh_user_id=hh_user_id,
+            display_name=display_name,
         )
 
 
