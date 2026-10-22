@@ -162,7 +162,9 @@ class OTPLoginService:
                     await self._discard(token)
 
     async def cancel(self, token: str | None) -> None:
-        entry = self._pending.pop(self._key(token or ""), None)
+        entry = self._pending.get(self._key(token or ""))
         if entry:
             async with entry.lock:
-                await entry.client.close()
+                # До захвата lock контекстом владеет текущая verify/captcha.
+                # Отмена ожидания не должна лишать её возможности закрыть HTTP.
+                await self._discard(token)

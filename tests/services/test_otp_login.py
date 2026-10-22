@@ -106,6 +106,30 @@ async def test_cancelled_verification_closes_flow(flows):
         await service.confirm(token, "1234")
 
 
+async def test_cancelled_cancel_does_not_lose_inflight_context(flows):
+    service, clients, _ = flows
+    token, _ = await service.start("a@example.test", "one")
+    started, release = asyncio.Event(), asyncio.Event()
+
+    async def slow_confirm(code):
+        started.set()
+        await release.wait()
+        return make_token_data()
+
+    clients[0].confirm.side_effect = slow_confirm
+    verifying = asyncio.create_task(service.confirm(token, "1234"))
+    await started.wait()
+    cancelling = asyncio.create_task(service.cancel(token))
+    await asyncio.sleep(0)
+    cancelling.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await cancelling
+    release.set()
+    await verifying
+    await service.close()
+    clients[0].close.assert_awaited_once()
+
+
 @pytest.mark.parametrize(
     "value,expected",
     [
