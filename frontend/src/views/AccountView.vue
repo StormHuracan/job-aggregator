@@ -6,10 +6,6 @@
         <p>Профиль, подключение источника и параметры поиска.</p>
       </div>
     </div>
-    <UiAlert
-      >Демонстрационный кабинет. Настройки сохраняются только в памяти этой
-      вкладки и сбрасываются при перезагрузке.</UiAlert
-    >
     <AsyncState :error="error" :loading="loading"
       ><template #error-actions
         ><UiButton variant="secondary" @click="load"
@@ -25,7 +21,6 @@
             <div>
               <p class="field-hint">Профиль пользователя</p>
               <h2>{{ user.display_name }}</h2>
-              <span class="demo-badge">Демо-режим</span>
             </div>
           </div>
           <div class="panel connection">
@@ -41,7 +36,7 @@
             <RouterLink class="connection-link" to="/login"
               >{{
                 user.hh_connected
-                  ? "Управлять подключением"
+                  ? "Подключить заново"
                   : "Перейти к подключению"
               }}
               <span aria-hidden="true">↗</span></RouterLink
@@ -52,25 +47,50 @@
           <form class="settings-form panel" @submit.prevent="save">
             <div>
               <h2>Настройки поиска</h2>
-              <p class="muted">
-                Параметры по умолчанию для новых поисков в демо-кабинете.
-              </p>
+              <p class="muted">Регион и объём сбора по умолчанию.</p>
             </div>
             <label class="field"
               >Регион по умолчанию<input
                 v-model.trim="defaultArea"
+                @input="clearFieldError('default_area')"
                 maxlength="255"
                 placeholder="Например, Москва"
-                :disabled="pending !== null" /></label
+                :disabled="pending !== null"
+                :aria-invalid="fieldErrors.default_area ? true : undefined"
+                :aria-describedby="
+                  fieldErrors.default_area ? 'default-area-error' : undefined
+                "
+              /><span
+                v-if="fieldErrors.default_area"
+                id="default-area-error"
+                class="error-text"
+                role="alert"
+                >{{ fieldErrors.default_area }}</span
+              ></label
             ><label class="field"
               >Количество страниц за один сбор<input
                 v-model.number="pagesLimit"
+                @input="clearFieldError('default_pages_limit')"
                 min="1"
                 step="1"
                 type="number"
                 required
                 :disabled="pending !== null"
-              /><span class="field-hint"
+                :aria-invalid="
+                  fieldErrors.default_pages_limit ? true : undefined
+                "
+                :aria-describedby="
+                  fieldErrors.default_pages_limit
+                    ? 'pages-limit-error'
+                    : undefined
+                "
+              /><span
+                v-if="fieldErrors.default_pages_limit"
+                id="pages-limit-error"
+                class="error-text"
+                role="alert"
+                >{{ fieldErrors.default_pages_limit }}</span
+              ><span class="field-hint"
                 >Больше страниц — больше вакансий и дольше ожидание.</span
               ></label
             ><UiAlert
@@ -112,7 +132,9 @@
             </div>
             <div class="session">
               <h2>Сеанс работы</h2>
-              <p class="field-hint">Завершите просмотр демо-кабинета.</p>
+              <p class="field-hint">
+                Завершите текущий сеанс на этом устройстве.
+              </p>
               <UiButton
                 variant="ghost"
                 :disabled="pending !== null"
@@ -127,94 +149,27 @@
   </section>
 </template>
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
-import { RouterLink, useRouter } from "vue-router";
-import type { CurrentUser } from "../api/user";
+import { RouterLink } from "vue-router";
 import AsyncState from "../components/AsyncState.vue";
 import UiAlert from "../components/ui/UiAlert.vue";
 import UiButton from "../components/ui/UiButton.vue";
-import { accountFixture } from "../mocks/user";
-const router = useRouter();
-const defaultArea = ref("");
-const error = ref<string | null>(null);
-const loading = ref(true);
-const pagesLimit = ref(1);
-const user = ref<CurrentUser | null>(null);
-const pending = ref<string | null>(null);
-const feedback = ref("");
-const actionError = ref(false);
-async function load(): Promise<void> {
-  loading.value = true;
-  error.value = null;
-  try {
-    user.value = await accountFixture.getCurrentUser();
-    defaultArea.value = user.value.settings.default_area ?? "";
-    pagesLimit.value = user.value.settings.default_pages_limit;
-  } catch {
-    error.value = "Не удалось загрузить данные личного кабинета";
-  } finally {
-    loading.value = false;
-  }
-}
-async function action(
-  name: string,
-  operation: () => Promise<void>,
-  success: string,
-): Promise<void> {
-  if (pending.value) return;
-  pending.value = name;
-  feedback.value = "";
-  actionError.value = false;
-  try {
-    await operation();
-    feedback.value = success;
-  } catch {
-    feedback.value = "Не удалось выполнить действие. Попробуйте ещё раз.";
-    actionError.value = true;
-  } finally {
-    pending.value = null;
-  }
-}
-async function save(): Promise<void> {
-  if (
-    !user.value ||
-    !Number.isSafeInteger(pagesLimit.value) ||
-    pagesLimit.value < 1
-  )
-    return;
-  await action(
-    "save",
-    async () => {
-      user.value!.settings = await accountFixture.updateSettings({
-        default_area: defaultArea.value || null,
-        default_pages_limit: pagesLimit.value,
-      });
-    },
-    "Настройки сохранены в демо-кабинете до перезагрузки вкладки.",
-  );
-}
-async function markSeen(): Promise<void> {
-  if (!user.value) return;
-  await action(
-    "seen",
-    async () => {
-      await accountFixture.markMatchesSeen();
-      user.value!.new_matches_count = 0;
-    },
-    "Счётчик совпадений сброшен.",
-  );
-}
-async function signOut(): Promise<void> {
-  await action(
-    "logout",
-    async () => {
-      await accountFixture.logout();
-      await router.push("/login");
-    },
-    "",
-  );
-}
-onMounted(load);
+import { useAccount } from "../composables/useAccount";
+const {
+  user,
+  loading,
+  error,
+  defaultArea,
+  pagesLimit,
+  pending,
+  feedback,
+  actionError,
+  fieldErrors,
+  load,
+  save,
+  markSeen,
+  signOut,
+  clearFieldError,
+} = useAccount();
 </script>
 <style scoped>
 .profile-grid {
@@ -245,13 +200,7 @@ onMounted(load);
   justify-content: center;
   width: 56px;
 }
-.demo-badge {
-  background: var(--color-surface-subtle);
-  border-radius: 4px;
-  color: var(--color-muted);
-  font-size: 12px;
-  padding: 3px 8px;
-}
+
 .connection {
   padding: 24px;
 }
