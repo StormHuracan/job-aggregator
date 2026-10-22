@@ -13,6 +13,7 @@ from job_aggregator.db.models import (  # noqa: F401
     hh_account,
     hh_account_token,
     saved_search,
+    saved_search_match,
     user,
     vacancy,
 )
