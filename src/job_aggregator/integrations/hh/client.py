@@ -3,11 +3,11 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
-from typing import Any, Literal
+from typing import Any, Literal, Protocol
 
 from hh_applicant_tool import api as hh_api
 from pydantic import ValidationError
-from requests import RequestException
+from requests import PreparedRequest, RequestException, Response, Session
 
 from job_aggregator.integrations.hh.dto import (
     HHVacancyPage,
@@ -22,6 +22,22 @@ from job_aggregator.schemas.hh_token import HHAccountTokenData
 from job_aggregator.schemas.vacancy import VacancyData
 
 _ALLOWED_METHODS = Literal["GET", "POST", "PUT", "DELETE"]
+
+
+class HHRequestClient(Protocol):
+    async def request(
+        self,
+        method: _ALLOWED_METHODS,
+        endpoint: str,
+        params: dict[str, Any] | None = None,
+    ) -> Any: ...
+
+
+class _TimeoutSession(Session):
+    def send(self, request: PreparedRequest, **kwargs: Any) -> Response:
+        # SDK вызывает Session.send без timeout, в том числе при OAuth refresh.
+        kwargs.setdefault("timeout", (5, 30))
+        return super().send(request, **kwargs)
 
 
 def _dto_to_library_kwargs(tokens: HHAccountTokenData) -> dict[str, Any]:
@@ -63,10 +79,10 @@ class HHAPIClient:
         self._tokens = tokens
         self._allow_token_refresh = allow_token_refresh
         self._retry_sleep = retry_sleep
-        self._client_id = client_id
-        self._client_secret = client_secret
+        self._http_session = _TimeoutSession()
 
         kwargs: dict[str, Any] = _dto_to_library_kwargs(tokens)
+        kwargs["session"] = self._http_session
         if allow_token_refresh:
             kwargs["client_id"] = client_id
             kwargs["client_secret"] = client_secret
@@ -74,6 +90,10 @@ class HHAPIClient:
             kwargs.pop("refresh_token", None)
 
         self._client = hh_api.ApiClient(**kwargs)
+
+    def close(self) -> None:
+        """Освобождает HTTP-соединения после последней операции клиента."""
+        self._http_session.close()
 
     def get_current_tokens(self) -> HHAccountTokenData:
         """Текущие токены после последнего запроса."""
@@ -266,7 +286,7 @@ class HHClient:
     не сохраняются здесь — это ответственность сервисного слоя.
     """
 
-    def __init__(self, api_client: HHAPIClient) -> None:
+    def __init__(self, api_client: HHRequestClient) -> None:
         self._api = api_client
 
     async def search_vacancies(self, params: HHVacancySearchParams) -> HHVacancyPage:
