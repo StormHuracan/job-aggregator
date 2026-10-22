@@ -1,8 +1,11 @@
 import logging
+from secrets import compare_digest
 from typing import Annotated
+from urllib.parse import parse_qs, urlsplit
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from fastapi.responses import RedirectResponse
+from pydantic import BaseModel, ConfigDict, SecretStr
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -123,4 +126,101 @@ async def hh_oauth_callback(
         ) from None
     response = RedirectResponse("/account", status_code=303)
     _set_session_cookie(response, session_token, secure=settings.app_env != "local")
+    return response
+
+
+_OAUTH_COOKIE = "hh_oauth_state"
+
+
+class OAuthCompletion(BaseModel):
+    """Адрес мобильного возврата передаётся только в теле POST, без логирования."""
+
+    model_config = ConfigDict(extra="forbid")
+    return_url: SecretStr
+
+
+@router.post("/start")
+async def start_browser_login(
+    response: Response,
+    settings: Settings = Depends(get_settings),
+    client: HHOAuthClient = Depends(get_hh_oauth_client),
+    session: AuthSessionService = Depends(get_auth_session_service),
+    db: AsyncSession = Depends(get_db_session),
+) -> dict[str, str]:
+    """Начать браузерный вход с привязкой одноразового state к браузеру."""
+    try:
+        state = await session.create_oauth_state()
+        await db.commit()
+    except SQLAlchemyError:
+        await db.rollback()
+        raise HTTPException(500, "Не удалось начать вход. Попробуйте ещё раз") from None
+    response.set_cookie(
+        _OAUTH_COOKIE,
+        state,
+        max_age=600,
+        httponly=True,
+        samesite="lax",
+        secure=settings.app_env != "local",
+        path="/",
+    )
+    response.headers["Cache-Control"] = "no-store"
+    return {
+        "mode": "redirect" if settings.hh_redirect_uri else "mobile",
+        "authorization_url": client.get_authorization_url(
+            settings.hh_redirect_uri or "", state
+        ),
+    }
+
+
+@router.post("/complete", status_code=204)
+async def complete_browser_login(
+    data: OAuthCompletion,
+    request: Request,
+    settings: Settings = Depends(get_settings),
+    oauth_client: HHOAuthClient = Depends(get_hh_oauth_client),
+    auth_service: AuthSessionService = Depends(get_auth_session_service),
+    db_session: AsyncSession = Depends(get_db_session),
+) -> Response:
+    """Завершить мобильный OAuth без передачи code в URL нашего сайта."""
+    invalid = HTTPException(400, "Адрес возврата недействителен. Начните вход заново")
+    try:
+        raw = data.return_url.get_secret_value().strip()
+        if len(raw) > 8192:
+            raise invalid
+        url = urlsplit(raw)
+        query = parse_qs(url.query, max_num_fields=10)
+        (code,) = query.get("code", [])
+        (state,) = query.get("state", [])
+        cookie = request.cookies.get(_OAUTH_COOKIE, "")
+        if (
+            url.scheme != "hhandroid"
+            or url.netloc != "oauthresponse"
+            or url.path not in ("", "/")
+            or url.fragment
+            or not cookie
+            or not compare_digest(state.encode(), cookie.encode())
+        ):
+            raise invalid
+    except ValueError, TypeError:
+        raise invalid from None
+    result = await hh_oauth_callback(
+        code=code,
+        state=state,
+        settings=settings,
+        oauth_client=oauth_client,
+        auth_service=auth_service,
+        db_session=db_session,
+    )
+    response = Response(status_code=204, headers={"Cache-Control": "no-store"})
+    # Сохраняем HttpOnly session-cookie, созданную общим callback.
+    for key, value in result.raw_headers:
+        if key == b"set-cookie":
+            response.raw_headers.append((key, value))
+    response.delete_cookie(
+        _OAUTH_COOKIE,
+        path="/",
+        httponly=True,
+        secure=settings.app_env != "local",
+        samesite="lax",
+    )
     return response

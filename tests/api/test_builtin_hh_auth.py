@@ -1,4 +1,5 @@
 from unittest.mock import AsyncMock
+from urllib.parse import parse_qs, urlsplit
 
 import pytest
 from fastapi import FastAPI
@@ -20,12 +21,117 @@ def builtin_auth(app: FastAPI, sqlite_session: AsyncSession):
     app.dependency_overrides[get_settings] = lambda: Settings(_env_file=None)
 
 
+async def test_builtin_start_uses_sdk_defaults(async_client: AsyncClient, builtin_auth):
+    response = await async_client.post("/auth/hh/start")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["mode"] == "mobile"
+    url = urlsplit(data["authorization_url"])
+    assert url.hostname == "hh.ru"
+    query = parse_qs(url.query)
+    assert query["client_id"][0]
+    assert "redirect_uri" not in query
+    assert query["state"][0]
+    assert "httponly" in response.headers["set-cookie"].lower()
+    assert "no-store" in response.headers["cache-control"]
+
+
+async def test_builtin_completion_requires_browser_state(
+    async_client: AsyncClient, builtin_auth
+):
+    response = await async_client.post(
+        "/auth/hh/complete",
+        json={
+            "return_url": "hhandroid://oauthresponse?code=private-code&state=forged",
+        },
+    )
+    assert response.status_code == 400
+    assert "private-code" not in response.text
+
+
+async def test_builtin_completion_creates_session(
+    async_client: AsyncClient, builtin_auth, monkeypatch
+):
+    from datetime import UTC, datetime, timedelta
+
+    from job_aggregator.integrations.hh.client import HHAPIClient, HHOAuthClient
+    from job_aggregator.integrations.hh.dto import HHUserProfile
+    from job_aggregator.schemas.hh_token import HHAccountTokenData
+
+    monkeypatch.setattr(
+        HHOAuthClient,
+        "exchange_code",
+        AsyncMock(
+            return_value=HHAccountTokenData(
+                access_token="private-access",
+                refresh_token="private-refresh",
+                access_expires_at=datetime.now(UTC) + timedelta(hours=1),
+            )
+        ),
+    )
+    monkeypatch.setattr(
+        HHAPIClient,
+        "get_current_user",
+        AsyncMock(
+            return_value=HHUserProfile(
+                hh_user_id="123",
+                display_name="Иван",
+            )
+        ),
+    )
+    start = await async_client.post("/auth/hh/start")
+    state = parse_qs(urlsplit(start.json()["authorization_url"]).query)["state"][0]
+    payload = {
+        "return_url": f"hhandroid://oauthresponse?code=private-code&state={state}"
+    }
+    response = await async_client.post("/auth/hh/complete", json=payload)
+    assert response.status_code == 204
+    assert "job_aggregator_session=" in response.headers["set-cookie"]
+    assert "httponly" in response.headers["set-cookie"].lower()
+    HHOAuthClient.exchange_code.assert_awaited_once_with("private-code", "")
+    profile = await async_client.get("/me")
+    assert profile.status_code == 200
+    assert profile.json()["display_name"] == "Иван"
+    assert profile.json()["new_matches_count"] is None
+    assert "private-" not in profile.text
+    async_client.cookies.set("hh_oauth_state", state)
+    assert (
+        await async_client.post("/auth/hh/complete", json=payload)
+    ).status_code == 400
+    assert (await async_client.post("/auth/logout")).status_code == 204
+    assert (await async_client.get("/me")).status_code == 401
+
+
 @pytest.mark.parametrize("path,method", [("/me", "GET"), ("/me/settings", "PATCH")])
 async def test_profile_requires_session(async_client, builtin_auth, path, method):
     response = await async_client.request(
         method, path, json={} if method == "PATCH" else None
     )
     assert response.status_code == 401
+
+
+@pytest.mark.parametrize(
+    "return_url",
+    [
+        "https://evil.test/?code=secret&state=secret",
+        "hhandroid://oauthresponse?code=secret",
+        "hhandroid://oauthresponse?code=secret&code=second&state=secret",
+        "hhandroid://oauthresponse?code=secret&state=secret#fragment",
+        "hhandroid://other?code=secret&state=secret",
+        "hhandroid://[invalid",
+    ],
+)
+async def test_invalid_return_urls_do_not_leak_code(
+    async_client, builtin_auth, return_url
+):
+    start = await async_client.post("/auth/hh/start")
+    state = parse_qs(urlsplit(start.json()["authorization_url"]).query)["state"][0]
+    return_url = return_url.replace("state=secret", f"state={state}")
+    response = await async_client.post(
+        "/auth/hh/complete", json={"return_url": return_url}
+    )
+    assert response.status_code == 400
+    assert "secret" not in response.text
 
 
 async def test_settings_partial_update_and_owner_isolation(
