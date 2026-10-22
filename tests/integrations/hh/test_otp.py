@@ -205,6 +205,29 @@ async def test_rejected_captcha_returns_another_challenge_not_success(otp):
     assert result.captcha_image.startswith("data:image/png;base64,")
 
 
+async def test_ajax_captcha_acknowledgement_sends_code_with_same_state(otp):
+    otp._captcha_state = "accepted-state"
+    otp._request.side_effect = [_Reply(302, {}, b""), response({"success": True})]
+    result = await otp.solve_captcha("answer")
+    assert result.step == "code"
+    assert otp._request.call_args.args == ("POST", "https://hh.ru/account/otp_generate")
+    assert otp._request.call_args.kwargs["data"]["captchaState"] == "accepted-state"
+    assert otp._ready is True
+
+
+async def test_ajax_captcha_acknowledgement_still_checks_hh_next_challenge(otp):
+    otp._captcha_state = "state"
+    otp._request.side_effect = [
+        _Reply(302, {}, b""),
+        response({"hhcaptcha": {"captchaState": "new-state"}}),
+        response({"key": "new-key"}),
+        _Reply(200, {"Content-Type": "image/png"}, b"png"),
+    ]
+    result = await otp.solve_captcha("answer")
+    assert result.step == "captcha"
+    assert otp._ready is False
+
+
 @pytest.mark.parametrize(
     "url",
     [

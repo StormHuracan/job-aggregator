@@ -234,6 +234,11 @@ class HHOTPClient:
             headers=self._headers,
         )
         data = response.json()
+        logger.info(
+            "HH OTP code request: status=%d sent=%s",
+            response.status,
+            data.get("success") is True,
+        )
         if data.get("success") is True and response.status == 200:
             self._ready = True
             self._captcha_state = ""
@@ -282,6 +287,7 @@ class HHOTPClient:
         }
         url = self._origin + "/account/captcha"
         method = "POST"
+        acknowledged = False
         response = await self._request(
             "POST",
             url,
@@ -297,6 +303,12 @@ class HHOTPClient:
                 break
             location = response.headers.get("Location")
             if not location:
+                if response.status == 302:
+                    # HH подтверждает AJAX-капчу 302 без навигации. SDK также
+                    # принимает этот ответ; результат проверит следующий шаг HH.
+                    logger.info("HH OTP captcha acknowledged: redirect_not_required")
+                    acknowledged = True
+                    break
                 logger.warning(
                     "HH OTP captcha redirect rejected: reason=missing_location"
                 )
@@ -314,7 +326,7 @@ class HHOTPClient:
             raise HHPermanentRequestError("HH captcha redirect limit")
         if response.status == 403:
             return await self._captcha(self._captcha_state, self._captcha_step)
-        if response.status != 200:
+        if response.status != 200 and not acknowledged:
             raise HHPermanentRequestError("HH captcha rejected")
         if self._captcha_step == "send":
             return await self._send_code()
