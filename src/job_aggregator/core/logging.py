@@ -5,6 +5,19 @@ LOG_FORMAT = "%(asctime)s %(levelname)s [%(name)s] %(message)s"
 HANDLER_NAME = "job_aggregator"
 
 
+class _SuccessfulHealthLogFilter(logging.Filter):
+    """Убирает шум liveness-проб, сохраняя ошибки и диагностику БД."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        args = record.args
+        return not (
+            isinstance(args, tuple)
+            and len(args) == 5
+            and args[1:3] == ("GET", "/health")
+            and args[4] == 200
+        )
+
+
 class _OAuthCallbackLogFilter(logging.Filter):
     """Не даёт access-логам записать одноразовый code и state из URL."""
 
@@ -49,3 +62,9 @@ def configure_logging(log_level: str) -> None:
             isinstance(item, _OAuthCallbackLogFilter) for item in request_logger.filters
         ):
             request_logger.addFilter(_OAuthCallbackLogFilter())
+
+    access_logger = logging.getLogger("uvicorn.access")
+    if not any(
+        isinstance(item, _SuccessfulHealthLogFilter) for item in access_logger.filters
+    ):
+        access_logger.addFilter(_SuccessfulHealthLogFilter())

@@ -81,3 +81,20 @@ def test_callback_query_secrets_are_redacted(
     assert "/api/auth/hh/callback" in caplog.text
     assert "private-code" not in caplog.text
     assert "private-state" not in caplog.text
+
+
+@pytest.mark.parametrize(
+    "path,status,visible",
+    [
+        ("/health", 200, False),
+        ("/health", 500, True),
+        ("/health/db", 200, True),
+        ("/vacancies", 200, True),
+    ],
+)
+def test_only_successful_liveness_probes_are_quiet(path, status, visible, caplog):
+    configure_logging("INFO")
+    logging.getLogger("uvicorn.access").info(
+        '%s - "%s %s HTTP/%s" %s', "127.0.0.1", "GET", path, "1.1", status
+    )
+    assert (f"GET {path} HTTP" in caplog.text) is visible
