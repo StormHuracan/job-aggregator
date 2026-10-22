@@ -36,31 +36,90 @@
       <span class="story-caption">Job Aggregator</span>
     </div>
     <div class="login-card panel">
-      <span class="login-mark" aria-hidden="true">JA</span>
-      <h1 id="login-heading">Добро пожаловать</h1>
+      <span v-if="!mobileLogin" class="login-mark" aria-hidden="true">JA</span>
+      <h1 id="login-heading">{{ mobileLogin ? "Завершите вход" : "Добро пожаловать" }}</h1>
       <p class="login-copy">
-        Войдите через HH.ru, чтобы работать со своими сохранёнными поисками.
+        {{ mobileLogin
+          ? "HH.ru открыт в отдельной вкладке. Войдите там и вернитесь сюда."
+          : "Войдите через HH.ru, чтобы работать со своими сохранёнными поисками." }}
       </p>
-      <UiAlert v-if="authMessage" :tone="route.query.reason === 'session-check-failed' || route.query.error ? 'error' : 'info'">
-        {{ authMessage }}
-      </UiAlert>
-      <UiButton v-if="route.query.reason === 'session-check-failed'" class="retry-session" variant="secondary" :disabled="retrying" @click="retrySession">
-        {{ retrying ? "Проверяем вход…" : "Повторить проверку" }}
-      </UiButton>
-      <UiButton :disabled="pending" :busy="pending" @click="startLogin"
-        >{{ pending ? "Переходим на HH.ru…" : "Продолжить с HH.ru" }}
+      <UiAlert
+        v-if="authMessage && !mobileLogin"
+        :tone="
+          route.query.reason === 'session-check-failed' || route.query.error
+            ? 'error'
+            : 'info'
+        "
+        >{{ authMessage }}</UiAlert
+      >
+      <UiButton
+        v-if="route.query.reason === 'session-check-failed' && !mobileLogin"
+        class="retry-session"
+        variant="secondary"
+        :disabled="retrying"
+        @click="retrySession"
+        >{{ retrying ? "Проверяем вход…" : "Повторить проверку" }}</UiButton
+      >
+      <UiButton v-if="!mobileLogin" :disabled="pending" :busy="pending" @click="startLogin"
+        >{{ pending ? "Начинаем вход…" : "Продолжить с HH.ru" }}
         <span aria-hidden="true">↗</span></UiButton
       >
-      <div class="login-explanation">
+      <UiAlert v-if="loginError && !mobileLogin" class="login-error" tone="error">
+        {{ loginError }}
+      </UiAlert>
+      <form
+        v-if="mobileLogin"
+        class="mobile-completion"
+        @submit.prevent="completeLogin"
+      >
+        <p class="field-hint">
+          Если HH.ru предлагает открыть приложение, отмените переход.
+          Скопируйте полный адрес возврата hhandroid://oauthresponse и вставьте ниже.
+        </p>
+        <a
+          v-if="authorizationUrl"
+          :href="authorizationUrl"
+          target="_blank"
+          rel="noopener noreferrer"
+        >Открыть HH.ru ↗</a>
+        <label class="field">Адрес возврата из HH.ru
+          <input
+            v-model="returnUrl"
+            type="text"
+            autocomplete="off"
+            autocapitalize="off"
+            :spellcheck="false"
+            required
+            :disabled="pending"
+            placeholder="hhandroid://oauthresponse?…"
+            :aria-invalid="loginError ? true : undefined"
+            :aria-describedby="loginError ? 'return-url-error' : undefined"
+          />
+        </label>
+        <UiAlert v-if="loginError" id="return-url-error" tone="error">
+          {{ loginError }}
+        </UiAlert>
+        <p class="field-hint">
+          Адрес содержит одноразовый код. Не делитесь им. Срок действия — 10 минут.
+        </p>
+        <UiButton
+          type="submit"
+          :disabled="pending || !returnUrl.trim()"
+          :busy="pending"
+        >Завершить вход</UiButton>
+        <UiButton variant="ghost" :disabled="pending" @click="startLogin">
+          Начать заново
+        </UiButton>
+      </form>
+      <div v-if="!mobileLogin" class="login-explanation">
         <h2>Зачем подключать HH.ru?</h2>
         <p>
           Доступ нужен для получения вакансий от вашего имени. Пароль от HH.ru
           вы вводите только на сайте HH.ru.
         </p>
       </div>
-      <p class="login-note">
-        Авторизация проходит на стороне HH.ru.<br />После входа вы вернётесь в
-        Job Aggregator.
+      <p v-if="!mobileLogin" class="login-note">
+        Авторизация проходит на стороне HH.ru. Для встроенного мобильного клиента вход завершается вставкой адреса возврата.
       </p>
     </div>
   </section>
@@ -70,10 +129,15 @@ import { computed, onScopeDispose, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import UiAlert from "../components/ui/UiAlert.vue";
 import UiButton from "../components/ui/UiButton.vue";
+import { ApiError, request } from "../api/client";
 const route = useRoute();
 const router = useRouter();
 const pending = ref(false);
 const retrying = ref(false);
+const loginError = ref("");
+const mobileLogin = ref(false);
+const returnUrl = ref("");
+const authorizationUrl = ref("");
 const authMessage = computed(() => {
   if (route.query.reason === "session-check-failed")
     return "Не удалось проверить вход. Защищённые данные не загружены. Попробуйте ещё раз.";
@@ -108,11 +172,69 @@ function resetPending(): void {
 }
 window.addEventListener("pageshow", resetPending);
 onScopeDispose(() => window.removeEventListener("pageshow", resetPending));
-function startLogin(): void {
+async function startLogin(): Promise<void> {
   if (pending.value) return;
   pending.value = true;
-  const base = (import.meta.env.VITE_API_BASE_URL ?? "/api").replace(/\/$/, "");
-  window.location.assign(`${base}/auth/hh/login`);
+  loginError.value = "";
+  returnUrl.value = "";
+  // Вкладка создаётся в обработчике клика: иначе браузер блокирует popup после await.
+  const popup = window.open("about:blank", "_blank");
+  if (popup) popup.opener = null;
+  try {
+    const result = await request<{
+      mode: "mobile" | "redirect";
+      authorization_url: string;
+    }>("/auth/hh/start", { method: "POST" });
+    const url = new URL(result.authorization_url);
+    if (
+      url.protocol !== "https:" || url.hostname !== "hh.ru" ||
+      url.pathname !== "/oauth/authorize"
+    ) throw new Error("Invalid authorization URL");
+    if (result.mode === "redirect") {
+      popup?.close();
+      window.location.assign(url.href);
+    } else {
+      mobileLogin.value = true;
+      authorizationUrl.value = url.href;
+      if (popup) popup.location.href = url.href;
+    }
+  } catch {
+    popup?.close();
+    loginError.value = "Не удалось начать вход. Проверьте подключение и попробуйте ещё раз.";
+  } finally {
+    pending.value = false;
+  }
+}
+async function completeLogin(): Promise<void> {
+  if (pending.value) return;
+  loginError.value = "";
+  try {
+    const url = new URL(returnUrl.value.trim());
+    if (
+      url.protocol !== "hhandroid:" || url.host !== "oauthresponse" ||
+      !url.searchParams.get("code") || !url.searchParams.get("state")
+    ) throw new Error("Invalid return URL");
+  } catch {
+    loginError.value = "Вставьте полный адрес hhandroid://oauthresponse с параметрами code и state.";
+    return;
+  }
+  pending.value = true;
+  try {
+    await request<void>("/auth/hh/complete", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ return_url: returnUrl.value.trim() }),
+    });
+    returnUrl.value = "";
+    authorizationUrl.value = "";
+    await retrySession();
+  } catch (error) {
+    returnUrl.value = "";
+    loginError.value = error instanceof ApiError && error.status === 400
+      ? "Ссылка недействительна или уже использована. Начните вход заново."
+      : "Не удалось завершить вход. Начните авторизацию заново.";
+  } finally {
+    pending.value = false;
+  }
 }
 </script>
 <style scoped>
@@ -175,6 +297,15 @@ function startLogin(): void {
 .retry-session {
   margin-bottom: 12px;
 }
+.login-error { margin-top: 16px; }
+.mobile-completion {
+  display: grid;
+  gap: 16px;
+  margin-top: 24px;
+}
+.mobile-completion h2 { font-size: 16px; }
+.mobile-completion p { margin: 0; }
+.mobile-completion a { overflow-wrap: anywhere; }
 .login-explanation {
   border-top: 1px solid var(--color-border);
   margin-top: 28px;
