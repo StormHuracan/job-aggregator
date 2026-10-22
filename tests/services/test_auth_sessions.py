@@ -30,6 +30,7 @@ async def test_oauth_state_is_consumed_once_and_raw_value_is_not_stored(
     assert await service.consume_oauth_state(state) is False
     assert state != state_1
 
+
 async def test_expired_oauth_state_cannot_be_consumed(
     sqlite_session: AsyncSession,
 ) -> None:

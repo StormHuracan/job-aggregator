@@ -16,6 +16,7 @@ from job_aggregator.services.tokens import TokenService
 
 router = APIRouter(prefix="/auth/hh", tags=["auth"])
 
+
 @router.get("/status", response_model=HHAuthStatusResponse)
 async def hh_status(
     token_service: TokenService = Depends(get_token_service),
@@ -28,23 +29,24 @@ async def hh_status(
         access_expires_at=tokens.access_expires_at,
     )
 
+
 @router.get("/login")
 async def hh_login(
-        settings: Settings = Depends(get_settings),
-        client: HHOAuthClient = Depends(get_hh_oauth_client),
-        session: AuthSessionService = Depends(get_auth_session_service),
-        async_session: AsyncSession = Depends(get_db_session)
+    settings: Settings = Depends(get_settings),
+    client: HHOAuthClient = Depends(get_hh_oauth_client),
+    session: AuthSessionService = Depends(get_auth_session_service),
+    async_session: AsyncSession = Depends(get_db_session),
 ) -> RedirectResponse:
     if not settings.hh_redirect_uri:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Авторизация временно недоступна"
+            detail="Авторизация временно недоступна",
         )
 
-    res = await session.create_oauth_state()
+    raw_state = await session.create_oauth_state()
     authorization_url = client.get_authorization_url(
         redirect_uri=settings.hh_redirect_uri,
-        state=res,
+        state=raw_state,
     )
     await async_session.commit()
     return RedirectResponse(

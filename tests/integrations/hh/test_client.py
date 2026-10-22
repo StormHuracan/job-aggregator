@@ -4,6 +4,8 @@ from urllib.parse import urlencode
 
 import pytest
 from hh_applicant_tool import api as hh_api
+from requests import ConnectionError, PreparedRequest, Response
+from requests.adapters import HTTPAdapter
 
 from job_aggregator.integrations.hh.client import HHAPIClient, HHOAuthClient
 from job_aggregator.integrations.hh.errors import HHIntegrationError
@@ -86,6 +88,27 @@ def _reset_fakes() -> None:
 def fake_api(monkeypatch: pytest.MonkeyPatch) -> type[_FakeApiClient]:
     monkeypatch.setattr(hh_api, "ApiClient", _FakeApiClient)
     return _FakeApiClient
+
+
+async def test_real_sdk_uses_bounded_socket_timeouts(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen: list[Any] = []
+
+    def send(self: HTTPAdapter, request: PreparedRequest, **kwargs: Any) -> Response:
+        seen.append(kwargs.get("timeout"))
+        response = Response()
+        response.status_code = 200
+        response._content = b'{"ok": true}'
+        response.request = request
+        response.url = request.url
+        return response
+
+    monkeypatch.setattr(HTTPAdapter, "send", send)
+    client = HHAPIClient(_dto(), allow_token_refresh=False)
+    assert await client.request("GET", "/vacancies") == {"ok": True}
+    assert seen == [(5, 30)]
+    client.close()
 
 
 @pytest.fixture
@@ -204,6 +227,7 @@ def test_oauth_client_builds_authorization_url(
     assert "redirect_uri=https%3A%2F%2Fexample.com%2Fcallback" in url
     assert fake_oauth.instances[-1].init_kwargs["state"] == "test-state"
 
+
 async def test_oauth_client_exchanges_code(
     fake_oauth: type[_FakeOAuthClient],
 ) -> None:
@@ -233,3 +257,33 @@ async def test_oauth_client_wraps_library_errors(
     message = str(exc_info.value)
     assert "oauth boom" not in message
     assert "client_secret" not in message
+
+
+async def test_api_client_retries_temporary_library_error(
+    fake_api: type[_FakeApiClient],
+) -> None:
+    delays: list[float] = []
+
+    async def record_sleep(seconds: float) -> None:
+        delays.append(seconds)
+
+    client = HHAPIClient(_dto(), allow_token_refresh=False, retry_sleep=record_sleep)
+    fake = fake_api.instances[-1]
+    calls = 0
+
+    def fail_twice_then_answer(
+        method: str, endpoint: str, params: dict | None = None
+    ) -> Any:
+        nonlocal calls
+        calls += 1
+        if calls <= 2:
+            raise ConnectionError("network down")
+        return {"ok": True}
+
+    fake.request = fail_twice_then_answer  # type: ignore[assignment]
+
+    result = await client.request("GET", "/vacancies")
+
+    assert result == {"ok": True}
+    assert calls == 3
+    assert delays == [0.5, 1.0]
