@@ -1,14 +1,21 @@
+import logging
 from datetime import UTC, datetime
 from typing import Any
 from urllib.parse import urlencode
 
 import pytest
 from hh_applicant_tool import api as hh_api
+from hh_applicant_tool.api import errors as hh_errors
 from requests import ConnectionError, PreparedRequest, Response
 from requests.adapters import HTTPAdapter
 
 from job_aggregator.integrations.hh.client import HHAPIClient, HHOAuthClient
-from job_aggregator.integrations.hh.errors import HHIntegrationError
+from job_aggregator.integrations.hh.errors import (
+    HHAuthenticationError,
+    HHIntegrationError,
+    HHPermanentRequestError,
+    HHTemporaryError,
+)
 from job_aggregator.schemas.hh_token import HHAccountTokenData
 
 
@@ -440,3 +447,197 @@ async def test_oauth_network_failure_is_not_retried_and_closes_transport(
         ).exchange_code("private-code", "https://example.test/callback")
     assert len(attempts) == 1
     assert len(closed) == 1
+
+
+async def test_api_client_retries_rate_limit_error(
+    fake_api: type[_FakeApiClient],
+) -> None:
+    delays: list[float] = []
+    request_calls: list[tuple[str, str, dict | None]] = []
+
+    async def record_sleep(seconds: float) -> None:
+        delays.append(seconds)
+
+    client = HHAPIClient(
+        _dto(),
+        allow_token_refresh=False,
+        retry_sleep=record_sleep,
+    )
+    fake = fake_api.instances[-1]
+    calls = 0
+
+    def fail_once_then_answer(
+        method: str, endpoint: str, params: dict | None = None
+    ) -> Any:
+        nonlocal calls
+        calls += 1
+        request_calls.append((method, endpoint, params))
+
+        if calls == 1:
+            response = Response()
+            response.status_code = 429
+
+            raise hh_errors.LimitExceeded(
+                response,
+                {
+                    "errors": [
+                        {
+                            "type": "limit_exceeded",
+                            "value": "private rate limit details",
+                        }
+                    ]
+                },
+            )
+
+        return {
+            "items": [],
+            "page": 2,
+            "found": 0,
+            "pages": 0,
+        }
+
+    fake.request = fail_once_then_answer  # type: ignore[assignment]
+
+    try:
+        result = await client.request(
+            "GET",
+            "/vacancies",
+            {"text": "python", "area": "1", "page": 2, "per_page": 50},
+        )
+
+        assert result["items"] == []
+        assert calls == 2
+        assert delays == [0.5]
+        assert request_calls == [
+            (
+                "GET",
+                "/vacancies",
+                {
+                    "text": "python",
+                    "area": "1",
+                    "page": 2,
+                    "per_page": 50,
+                },
+            ),
+            (
+                "GET",
+                "/vacancies",
+                {
+                    "text": "python",
+                    "area": "1",
+                    "page": 2,
+                    "per_page": 50,
+                },
+            ),
+        ]
+    finally:
+        client.close()
+
+
+@pytest.mark.parametrize(
+    ("error_class", "status_code"),
+    [
+        (hh_errors.InternalServerError, 500),
+        (hh_errors.BadGateway, 502),
+    ],
+)
+async def test_api_client_exhausts_retries_for_server_errors(
+    fake_api: type[_FakeApiClient],
+    error_class: type[Exception],
+    status_code: int,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    delays: list[float] = []
+
+    async def record_sleep(seconds: float) -> None:
+        delays.append(seconds)
+
+    client = HHAPIClient(
+        _dto(),
+        allow_token_refresh=False,
+        retry_sleep=record_sleep,
+    )
+    fake = fake_api.instances[-1]
+    calls = 0
+
+    def always_fail(method: str, endpoint: str, params: dict | None = None) -> Any:
+        nonlocal calls
+        calls += 1
+
+        response = Response()
+        response.status_code = status_code
+        raise error_class(
+            response,
+            {"errors": [{"type": "server_error", "value": "private details"}]},
+        )
+
+    fake.request = always_fail  # type: ignore[assignment]
+
+    try:
+        with caplog.at_level(logging.WARNING):
+            with pytest.raises(HHTemporaryError) as exc_info:
+                await client.request("GET", "/vacancies", {"text": "python"})
+
+        assert "private details" not in str(exc_info.value)
+        assert "private details" not in caplog.text
+        assert calls == 3
+        assert delays == [0.5, 1.0]
+    finally:
+        client.close()
+
+
+@pytest.mark.parametrize(
+    ("error_class", "status_code", "expected_error"),
+    [
+        (
+            hh_errors.Forbidden,
+            403,
+            HHAuthenticationError,
+        ),
+        (
+            hh_errors.BadRequest,
+            400,
+            HHPermanentRequestError,
+        ),
+    ],
+)
+async def test_api_client_does_not_retry_permanent_errors(
+    fake_api: type[_FakeApiClient],
+    error_class: type[Exception],
+    status_code: int,
+    expected_error: type[HHIntegrationError],
+) -> None:
+    delays: list[float] = []
+
+    async def record_sleep(seconds: float) -> None:
+        delays.append(seconds)
+
+    client = HHAPIClient(
+        _dto(),
+        allow_token_refresh=False,
+        retry_sleep=record_sleep,
+    )
+    fake = fake_api.instances[-1]
+    calls = 0
+
+    def always_fail(method: str, endpoint: str, params: dict | None = None) -> Any:
+        nonlocal calls
+        calls += 1
+
+        response = Response()
+        response.status_code = status_code
+        raise error_class(
+            response,
+            {"errors": [{"type": "request_error", "value": "private details"}]},
+        )
+
+    fake.request = always_fail  # type: ignore[assignment]
+
+    try:
+        with pytest.raises(expected_error):
+            await client.request("GET", "/vacancies", {"text": "python"})
+
+        assert calls == 1
+        assert delays == []
+    finally:
+        client.close()
