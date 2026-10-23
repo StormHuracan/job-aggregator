@@ -133,7 +133,7 @@ async function submit(): Promise<void> {
       value &&
       (!Number.isSafeInteger(Number(value)) || Number(value) < 0)
     ) {
-      errors[field.key] = "Введите целое неотрицательное число";
+      errors[field.key] = "Введите целое число от 0";
     }
   }
   const min = String(values.min_salary).trim()

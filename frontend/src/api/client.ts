@@ -4,7 +4,7 @@ const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL ?? "/api").replace(/\/$/, 
 
 function errorMessageForStatus(status: number): string {
   if (status === 401) {
-    return "Сессия истекла. Войдите снова";
+    return "Войдите снова, чтобы продолжить.";
   }
   if (status === 503) {
     return "Сервис временно недоступен";
@@ -25,7 +25,7 @@ export async function request<T>(path: string, init: RequestInit = {}): Promise<
       headers,
     });
   } catch {
-    throw new ApiError(0, "Не удалось подключиться к API");
+    throw new ApiError(0, "Не удалось связаться с сервисом. Проверьте интернет и попробуйте ещё раз.");
   }
 
   if (!response.ok) {
@@ -43,7 +43,7 @@ export async function request<T>(path: string, init: RequestInit = {}): Promise<
   try {
     return (await response.json()) as T;
   } catch {
-    throw new ApiError(response.status, "API вернул некорректный ответ");
+    throw new ApiError(response.status, "Не удалось загрузить данные. Попробуйте ещё раз.");
   }
 }
 
