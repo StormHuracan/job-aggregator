@@ -19,6 +19,7 @@ from job_aggregator.integrations.hh.errors import (
     classify_error,
 )
 from job_aggregator.integrations.hh.retry import retry_hh_request
+from job_aggregator.schemas.hh_area import HHAreaSuggestion
 from job_aggregator.schemas.hh_token import HHAccountTokenData
 from job_aggregator.schemas.vacancy import VacancyData
 
@@ -289,6 +290,32 @@ class HHClient:
 
     def __init__(self, api_client: HHRequestClient) -> None:
         self._api = api_client
+
+    async def suggest_areas(self, text: str) -> list[HHAreaSuggestion]:
+        """Найти регионы по названию; внешние URL и raw-ответ не покидают адаптер."""
+        response = await self._api.request("GET", "/suggests/areas", {"text": text})
+        if not isinstance(response, dict) or not isinstance(
+            response.get("items"), list
+        ):
+            raise HHPermanentRequestError("Unexpected HH areas response")
+        areas: list[HHAreaSuggestion] = []
+        try:
+            for item in response["items"]:
+                if not isinstance(item, dict):
+                    raise ValueError
+                parent = item.get("parent")
+                if parent is not None and not isinstance(parent, dict):
+                    raise ValueError
+                areas.append(
+                    HHAreaSuggestion(
+                        id=item.get("id"),
+                        name=item.get("text"),
+                        parent_name=parent.get("text") if parent else None,
+                    )
+                )
+        except (TypeError, ValueError) as error:
+            raise HHPermanentRequestError("Unexpected HH areas response") from error
+        return areas
 
     async def search_vacancies(self, params: HHVacancySearchParams) -> HHVacancyPage:
         query: dict[str, Any] = {
