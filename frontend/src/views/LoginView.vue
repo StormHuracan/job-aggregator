@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onScopeDispose, ref } from "vue";
+import { computed, onScopeDispose, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { request } from "../api/client";
 import HHCodeLogin from "../components/HHCodeLogin.vue";
@@ -8,32 +8,38 @@ import UiButton from "../components/ui/UiButton.vue";
 const route = useRoute();
 const router = useRouter();
 const method = ref<"otp" | "oauth" | null>(null);
-const error = ref("");
+const optionsUnavailable = ref(false);
 const loading = ref(false);
 const retrying = ref(false);
 let active = true;
-onScopeDispose(() => { active = false; });
+let optionsVersion = 0;
+onScopeDispose(() => { active = false; optionsVersion++; });
+const sessionCheckFailed = computed(() => route.query.reason === "session-check-failed");
+const serviceUnavailable = computed(() => sessionCheckFailed.value || optionsUnavailable.value);
 const oauthUrl = (import.meta.env.VITE_API_BASE_URL ?? "/api").replace(/\/$/, "") + "/auth/hh/login";
 const authMessage = computed(() => {
-  if (route.query.reason === "session-check-failed")
-    return "Не удалось проверить вход. Защищённые данные не загружены. Попробуйте ещё раз.";
   if (route.query.reason === "auth-required")
     return "Для просмотра этого раздела войдите через HH.ru.";
   if (route.query.reason === "session-expired")
-    return "Сессия истекла. Войдите снова, чтобы продолжить.";
+    return "Войдите снова, чтобы продолжить.";
   return route.query.error ? "Не удалось завершить вход. Попробуйте подключиться ещё раз." : "";
 });
 async function loadOptions(): Promise<void> {
-  if (loading.value) return;
+  if (loading.value || sessionCheckFailed.value) return;
+  const version = ++optionsVersion;
   loading.value = true;
-  error.value = "";
   try {
     const options = await request<{ method: string }>("/auth/hh/options");
     if (options.method !== "otp" && options.method !== "oauth") throw new Error("Invalid login mode");
-    if (active) method.value = options.method;
+    if (active && version === optionsVersion) {
+      method.value = options.method;
+      optionsUnavailable.value = false;
+    }
   } catch {
-    if (active) error.value = "Не удалось начать вход. Проверьте подключение и попробуйте ещё раз.";
-  } finally { loading.value = false; }
+    if (active && version === optionsVersion) optionsUnavailable.value = true;
+  } finally {
+    if (active && version === optionsVersion) loading.value = false;
+  }
 }
 async function retrySession(): Promise<void> {
   if (retrying.value) return;
@@ -44,33 +50,47 @@ async function retrySession(): Promise<void> {
     await router.replace(internal && router.resolve(target).meta.requiresAuth ? target : "/account");
   } finally { retrying.value = false; }
 }
-onMounted(loadOptions);
+async function retryAvailability(): Promise<void> {
+  if (retrying.value || loading.value) return;
+  if (sessionCheckFailed.value) await retrySession();
+  else await loadOptions();
+}
+watch(() => route.query.reason, () => {
+  optionsVersion++;
+  method.value = null;
+  loading.value = false;
+  optionsUnavailable.value = false;
+  if (!sessionCheckFailed.value) void loadOptions();
+}, { immediate: true });
 </script>
 <template>
-  <section class="login-layout" aria-labelledby="login-heading">
-    <div class="login-story">
+  <section class="login-layout" :class="{ 'is-unavailable': serviceUnavailable }" aria-labelledby="login-heading">
+    <div v-if="!serviceUnavailable" class="login-story">
       <span class="story-logo" aria-hidden="true">JA</span>
       <h2>Меньше повторяющихся запросов.<br />Больше подходящих вакансий.</h2>
       <p>Ищите вакансии для разработчиков и сохраняйте параметры, к которым хочется вернуться.</p>
       <span class="story-caption">Job Aggregator</span>
     </div>
     <div class="login-card panel">
-      <span class="login-mark" aria-hidden="true">JA</span>
+      <span class="login-mark" :class="{ 'unavailable-mark': serviceUnavailable }" aria-hidden="true">JA</span>
+      <template v-if="serviceUnavailable">
+        <h1 id="login-heading">Сервис временно недоступен</h1>
+        <p class="unavailable-copy" role="status">
+          Не удалось связаться с сервисом. Подождите немного и попробуйте ещё раз.
+        </p>
+        <UiButton class="retry-session" :disabled="retrying || loading" :busy="retrying || loading" @click="retryAvailability">
+          {{ retrying || loading ? "Проверяем доступность…" : "Попробовать снова" }}
+        </UiButton>
+      </template>
+      <template v-else>
       <h1 id="login-heading">Войти через HH.ru</h1>
       <p class="login-copy">Войдите, чтобы работать со своими сохранёнными поисками.</p>
       <UiAlert v-if="authMessage" :tone="route.query.reason === 'auth-required' ? 'info' : 'error'">{{ authMessage }}</UiAlert>
-      <UiButton v-if="route.query.reason === 'session-check-failed'" class="retry-session"
-        variant="secondary" :disabled="retrying" @click="retrySession">
-        {{ retrying ? "Проверяем вход…" : "Повторить проверку" }}
-      </UiButton>
       <p v-if="loading" role="status">Проверяем способ входа…</p>
-      <template v-else-if="error">
-        <UiAlert tone="error">{{ error }}</UiAlert>
-        <UiButton class="retry-session" @click="loadOptions">Повторить</UiButton>
-      </template>
       <HHCodeLogin v-else-if="method === 'otp'" @authenticated="retrySession" />
       <a v-else-if="method === 'oauth'" data-test="oauth-login" class="oauth-link" :href="oauthUrl">Продолжить с HH.ru ↗</a>
-      <p class="login-note">Код нужен только для входа. Не сообщайте его другим людям.</p>
+      <p v-if="method === 'otp'" class="login-note">Код нужен только для входа. Не сообщайте его другим людям.</p>
+      </template>
     </div>
   </section>
 </template>
@@ -87,6 +107,13 @@ onMounted(loadOptions);
 .retry-session { width: 100%; margin-top: 12px; }
 .login-note { color: var(--color-muted); font-size: 12px; margin: 24px 0 0; }
 .oauth-link { display: block; background: var(--color-ink); color: var(--color-paper, #fff); border-radius: 10px; padding: 14px; margin-top: 20px; text-align: center; text-decoration: none; }
+.login-layout.is-unavailable { display: block; max-width: 480px; margin: 64px auto; }
+.is-unavailable .login-card { padding: 40px; }
+.unavailable-mark { position: relative; margin-bottom: 32px; }
+.unavailable-mark::after { background: var(--color-amber); border: 3px solid var(--color-surface); border-radius: 50%; bottom: -3px; content: ""; height: 15px; position: absolute; right: -3px; width: 15px; }
+.unavailable-copy { color: var(--color-muted); line-height: 1.7; margin: 16px 0 28px; }
+.is-unavailable .retry-session { margin: 0; min-height: 48px; }
 @media (max-width: 900px) { .login-layout { gap: 32px; grid-template-columns: 1fr 1fr; } .login-card { padding: 28px; } .login-story h2 { font-size: 24px; } }
 @media (max-width: 700px) { .login-layout { display: block; margin: 12px auto; max-width: 440px; } .login-story { display: none; } .login-card { padding: 24px; } .login-card h1 { font-size: 24px; } }
+@media (max-width: 700px) { .login-layout.is-unavailable { margin: 24px auto; } .is-unavailable .login-card { padding: 28px 24px; } }
 </style>
