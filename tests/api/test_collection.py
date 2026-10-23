@@ -18,7 +18,7 @@ from job_aggregator.integrations.hh.errors import (
     HHRateLimitError,
     HHTemporaryError,
 )
-from job_aggregator.schemas.collection import CollectionRunResponse
+from job_aggregator.schemas.collection import CollectionRunProgressResponse
 from job_aggregator.services.hh_requests import HHAccountNotConnectedError
 from tests.factories import make_vacancy_data
 
@@ -33,16 +33,23 @@ async def test_collection_requires_current_session(app, async_client):
 
 
 @pytest.fixture
-def collection_api(app, sqlite_session, monkeypatch):
+async def collection_api(app, sqlite_session, monkeypatch):
     """Реальные API и транзакции; подменяется только composition-граница HH."""
     user = User(id=42, hh_user_id="hh-42", display_name="Пользователь")
+    sqlite_session.add_all(
+        [
+            User(id=i, hh_user_id=f"hh-{i}", display_name="Пользователь")
+            for i in (42, 75)
+        ]
+    )
+    await sqlite_session.commit()
     app.dependency_overrides[get_current_user] = lambda: user
     app.dependency_overrides[get_db_session] = lambda: sqlite_session
     factory = async_sessionmaker(sqlite_session.bind, expire_on_commit=False)
     app.state.session_factory = factory
     service = AsyncMock()
-    service.collect_pages.return_value = CollectionRunResponse(
-        created=0, updated=0, skipped=0, failed=0
+    service.collect_pages_with_progress.return_value = CollectionRunProgressResponse(
+        created=0, updated=0, skipped=0, failed=0, next_page=1, exhausted=False
     )
     builder = Mock(return_value=service)
     monkeypatch.setattr(
@@ -59,11 +66,18 @@ async def test_collection_passes_current_owner_and_params(
     user.id = user_id
     response = await async_client.post(ENDPOINT, json={**BODY, "user_id": 999})
     assert response.status_code == 200
-    assert response.json() == {"created": 0, "updated": 0, "skipped": 0, "failed": 0}
+    assert response.json() == {
+        "created": 0,
+        "updated": 0,
+        "skipped": 0,
+        "failed": 0,
+        "next_page": 1,
+        "exhausted": False,
+    }
     assert builder.call_args.kwargs["user_id"] == user_id
     assert builder.call_args.kwargs["session"] is sqlite_session
     assert builder.call_args.kwargs["session_factory"] is factory
-    params, pages_limit = service.collect_pages.call_args.args
+    params, pages_limit = service.collect_pages_with_progress.call_args.args
     assert (params.text, params.area, params.page, pages_limit) == (
         "python",
         None,
@@ -84,7 +98,7 @@ async def test_collection_validates_before_running(async_client, collection_api,
     service, *_ = collection_api
     response = await async_client.post(ENDPOINT, json=body)
     assert response.status_code == 422
-    service.collect_pages.assert_not_awaited()
+    service.collect_pages_with_progress.assert_not_awaited()
 
 
 async def test_collection_commits_success_including_rejected_items(
@@ -95,9 +109,11 @@ async def test_collection_commits_success_including_rejected_items(
     async def collect(*args):
         sqlite_session.add(Vacancy(**asdict(make_vacancy_data())))
         await sqlite_session.flush()
-        return CollectionRunResponse(created=1, updated=0, skipped=0, failed=1)
+        return CollectionRunProgressResponse(
+            created=1, updated=0, skipped=0, failed=1, next_page=1, exhausted=False
+        )
 
-    service.collect_pages.side_effect = collect
+    service.collect_pages_with_progress.side_effect = collect
     response = await async_client.post(ENDPOINT, json=BODY)
     assert response.status_code == 200
     assert response.json()["failed"] == 1
@@ -128,7 +144,7 @@ async def test_collection_rolls_back_and_hides_internal_errors(
         await sqlite_session.flush()
         raise error
 
-    service.collect_pages.side_effect = collect
+    service.collect_pages_with_progress.side_effect = collect
     response = await async_client.post(ENDPOINT, json=BODY)
     assert response.status_code == status
     assert isinstance(response.json()["detail"], str)
@@ -145,9 +161,11 @@ async def test_collection_commit_failure_is_not_reported_as_success(
     async def collect(*args):
         sqlite_session.add(Vacancy(**asdict(make_vacancy_data())))
         await sqlite_session.flush()
-        return CollectionRunResponse(created=1, updated=0, skipped=0, failed=0)
+        return CollectionRunProgressResponse(
+            created=1, updated=0, skipped=0, failed=0, next_page=1, exhausted=False
+        )
 
-    service.collect_pages.side_effect = collect
+    service.collect_pages_with_progress.side_effect = collect
     monkeypatch.setattr(
         sqlite_session, "commit", AsyncMock(side_effect=SQLAlchemyError("private-sql"))
     )
@@ -168,7 +186,7 @@ async def test_collection_cancellation_rolls_back_without_success(
         await sqlite_session.flush()
         raise asyncio.CancelledError
 
-    service.collect_pages.side_effect = collect
+    service.collect_pages_with_progress.side_effect = collect
     with pytest.raises(asyncio.CancelledError):
         await async_client.post(ENDPOINT, json=BODY)
     async with factory() as check:

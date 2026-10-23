@@ -7,6 +7,9 @@ from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from job_aggregator.db.models.user import User
+from job_aggregator.db.repositories.collection_progress import (
+    CollectionProgressRepository,
+)
 from job_aggregator.db.repositories.hh_account import HHAccountRepository
 from job_aggregator.services import hh_requests
 from job_aggregator.services.hh_requests import AuthorizedHHAPIClient
@@ -57,6 +60,29 @@ async def _wait_for_blocked_request(
             await asyncio.sleep(0.01)
 
     await asyncio.wait_for(wait(), 5)
+
+
+async def test_new_collection_position_does_not_block_authorized_token_refresh(
+    pg_session_factory,
+    owners,
+    api_factory,
+):
+    def configure(api):
+        api.replacement = make_token_data(access_token="refreshed")
+
+    api_factory.configure = configure
+    async with pg_session_factory() as session:
+        await CollectionProgressRepository(session).get_for_update(owners[0], "a" * 64)
+        client = AuthorizedHHAPIClient(
+            pg_session_factory, owners[0], allow_token_refresh=True
+        )
+        assert await asyncio.wait_for(client.request("GET", "/vacancies"), 1) == {
+            "ok": True
+        }
+        await session.commit()
+    async with pg_session_factory() as session:
+        account = await HHAccountRepository(session).get_by_user_id(owners[0])
+        assert account.access_token == "refreshed"
 
 
 async def test_same_owner_waits_and_other_owner_is_independent(

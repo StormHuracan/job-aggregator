@@ -87,7 +87,11 @@ class AuthorizedHHAPIClient:
         result: Any = None
         async with self._session_factory.begin() as session:
             owner = await session.scalar(
-                select(User.id).where(User.id == self._user_id).with_for_update()
+                select(User.id)
+                .where(User.id == self._user_id)
+                # NO KEY UPDATE сериализует запросы владельца, но совместим
+                # с FK-проверкой новой позиции сбора в другой транзакции.
+                .with_for_update(key_share=True)
             )
             repository = HHAccountRepository(session)
             account = await repository.get_by_user_id(self._user_id)

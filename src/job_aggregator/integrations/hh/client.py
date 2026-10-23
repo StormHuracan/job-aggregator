@@ -316,6 +316,7 @@ class HHClient:
         try:
             return HHVacancyPage(
                 items=items,
+                received_count=len(raw_items),
                 page=int(response.get("page", 0)),
                 found=int(response.get("found", 0)),
                 pages=int(response.get("pages", 0)),

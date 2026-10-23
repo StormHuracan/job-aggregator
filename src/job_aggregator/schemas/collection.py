@@ -5,6 +5,7 @@ class CollectionRunRequest(BaseModel):
     text: str
     area: str | None
     pages_limit: int = Field(gt=0)
+    restart: bool = False
 
     @field_validator("text")
     @classmethod
@@ -19,3 +20,8 @@ class CollectionRunResponse(BaseModel):
     updated: int = Field(ge=0)
     skipped: int = Field(ge=0)
     failed: int = Field(ge=0)
+
+
+class CollectionRunProgressResponse(CollectionRunResponse):
+    next_page: int = Field(ge=0)
+    exhausted: bool
