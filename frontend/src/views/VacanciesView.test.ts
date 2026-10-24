@@ -48,11 +48,229 @@ afterEach(() => {
 });
 
 describe("Vacancies API search", () => {
+  it("keeps the HH collection form collapsed on the initial page", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation(() => Promise.resolve(response(list()))),
+    );
+    await open();
+    expect(wrapper.get(".source-toggle").attributes("aria-expanded")).toBe(
+      "false",
+    );
+    expect(wrapper.get("#collection-panel").isVisible()).toBe(false);
+    expect(wrapper.get("form.filters").isVisible()).toBe(true);
+  });
+  it("restores applied conditions and draft fields with browser back", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation(() => Promise.resolve(response(list()))),
+    );
+    const router = await open("/vacancies?text=Python&area=Москва&offset=20");
+    await wrapper.get("#vacancy-query").setValue("Rust");
+    await wrapper.get("form.filters").trigger("submit");
+    await flushPromises();
+    expect(router.currentRoute.value.query.text).toBe("Rust");
+    router.back();
+    await flushPromises();
+    expect(router.currentRoute.value.query.text).toBe("Python");
+    expect(router.currentRoute.value.query.offset).toBe("20");
+    expect(wrapper.get<HTMLInputElement>("#vacancy-query").element.value).toBe(
+      "Python",
+    );
+    expect(wrapper.get('[aria-label="Применённые условия"]').text()).toContain(
+      "Python",
+    );
+  });
+  it("hides the save dialog on 401 and ignores a late successful collection", async () => {
+    let finish!: (value: Response) => void;
+    const fetch = vi.fn().mockImplementation((url: string) => {
+      if (url.endsWith("/saved-searches"))
+        return Promise.resolve(response({}, 401));
+      if (url.endsWith("/collection/hh/run"))
+        return new Promise<Response>((resolve) => {
+          finish = resolve;
+        });
+      return Promise.resolve(response(list()));
+    });
+    vi.stubGlobal("fetch", fetch);
+    const router = await open("/vacancies?text=Python");
+    await wrapper.get(".source-toggle").trigger("click");
+    await wrapper.get("#collection-query").setValue("Python");
+    await wrapper.get(".collection-form").trigger("submit");
+    await wrapper.get('[data-action="save-search"]').trigger("click");
+    await wrapper.get(".saved-form").trigger("submit");
+    await flushPromises();
+    expect(router.currentRoute.value.path).toBe("/login");
+    expect(wrapper.find("dialog").exists()).toBe(false);
+    finish(
+      response({
+        created: 1,
+        updated: 0,
+        skipped: 0,
+        failed: 0,
+        exhausted: false,
+        next_page: 1,
+      }),
+    );
+    await flushPromises();
+    expect(wrapper.text()).not.toContain("Найдено новых");
+    expect(wrapper.text()).not.toContain("Поиск сохранён");
+  });
+  it("refreshes the applied query after collection without applying unfinished edits", async () => {
+    const fetch = vi.fn().mockImplementation((url: string) =>
+      Promise.resolve(
+        response(
+          url.endsWith("/collection/hh/run")
+            ? {
+                created: 1,
+                updated: 0,
+                skipped: 0,
+                failed: 0,
+                exhausted: false,
+                next_page: 1,
+              }
+            : list(),
+        ),
+      ),
+    );
+    vi.stubGlobal("fetch", fetch);
+    await open("/vacancies?text=Python");
+    await wrapper.get("#vacancy-query").setValue("Rust");
+    await wrapper.get(".source-toggle").trigger("click");
+    await wrapper.get("#collection-query").setValue("Python");
+    await wrapper.get(".collection-form").trigger("submit");
+    await flushPromises();
+    expect(
+      new URL(fetch.mock.calls.at(-1)![0], "http://localhost").searchParams.get(
+        "text",
+      ),
+    ).toBe("Python");
+    expect(wrapper.get<HTMLInputElement>("#vacancy-query").element.value).toBe(
+      "Rust",
+    );
+  });
+  it("shows partial collection as a warning and preserves pending work when collapsed", async () => {
+    let finish!: (value: Response) => void;
+    const fetch = vi.fn().mockImplementation((url: string) =>
+      url.endsWith("/collection/hh/run")
+        ? new Promise<Response>((resolve) => {
+            finish = resolve;
+          })
+        : Promise.resolve(response(list())),
+    );
+    vi.stubGlobal("fetch", fetch);
+    await open();
+    await wrapper.get(".source-toggle").trigger("click");
+    await wrapper.get("#collection-query").setValue("Python");
+    await wrapper.get(".collection-form").trigger("submit");
+    await wrapper.get(".source-toggle").trigger("click");
+    await wrapper.get(".source-toggle").trigger("click");
+    expect(
+      wrapper
+        .get('.collection-form button[type="submit"]')
+        .attributes("disabled"),
+    ).toBeDefined();
+    finish(
+      response({
+        created: 1,
+        updated: 0,
+        skipped: 0,
+        failed: 2,
+        next_page: 1,
+        exhausted: false,
+      }),
+    );
+    await flushPromises();
+    expect(wrapper.get(".alert-warning").text()).toContain(
+      "Не удалось загрузить: 2",
+    );
+    expect(
+      fetch.mock.calls.filter(([url]) => url.endsWith("/collection/hh/run")),
+    ).toHaveLength(1);
+  });
+  it("saves applied criteria, warns about company and never posts it silently", async () => {
+    const fetch = vi
+      .fn()
+      .mockImplementation((url: string) =>
+        Promise.resolve(
+          response(
+            url.endsWith("/saved-searches")
+              ? { id: 7, name: "Python" }
+              : list(),
+          ),
+        ),
+      );
+    vi.stubGlobal("fetch", fetch);
+    await open("/vacancies?text=Python&company=Acme&area=Москва&salary_from=0");
+    await wrapper.get("#vacancy-query").setValue("Rust");
+    expect(
+      wrapper.get('[aria-label="Применённые условия"]').attributes("role"),
+    ).toBe("group");
+    expect(
+      wrapper.get('[data-action="save-search"]').attributes("aria-describedby"),
+    ).toBeUndefined();
+    await wrapper.get('[data-action="save-search"]').trigger("click");
+    expect(wrapper.get("dialog").text()).toContain(
+      "Компания «Acme» не сохранится",
+    );
+    expect(wrapper.get<HTMLInputElement>('[name="text"]').element.value).toBe(
+      "Python",
+    );
+    await wrapper.get('[name="name"]').setValue("Python");
+    await wrapper.get(".saved-form").trigger("submit");
+    await flushPromises();
+    const call = fetch.mock.calls.find(([url]) =>
+      url.endsWith("/saved-searches"),
+    )!;
+    expect(JSON.parse(call[1].body)).toEqual({
+      name: "Python",
+      text: "Python",
+      area: "Москва",
+      min_salary: 0,
+      max_salary: null,
+    });
+    expect(wrapper.text()).toContain("Поиск сохранён");
+  });
+  it("keeps applied chips stable while editing and removes one with offset reset", async () => {
+    const fetch = vi
+      .fn()
+      .mockImplementation(() => Promise.resolve(response(list())));
+    vi.stubGlobal("fetch", fetch);
+    const router = await open(
+      "/vacancies?text=Python&area=Москва&salary_from=0&offset=20",
+    );
+    await wrapper.get("#vacancy-query").setValue("Rust");
+    expect(wrapper.get('[aria-label="Применённые условия"]').text()).toContain(
+      "Python",
+    );
+    expect(
+      wrapper.get('[aria-label="Применённые условия"]').text(),
+    ).not.toContain("Rust");
+    await wrapper
+      .get('[aria-label="Убрать фильтр: Город: Москва"]')
+      .trigger("click");
+    await flushPromises();
+    expect(router.currentRoute.value.query.text).toBe("Python");
+    expect(router.currentRoute.value.query.area).toBeUndefined();
+    expect(Number(router.currentRoute.value.query.offset ?? 0)).toBe(0);
+    expect(
+      new URL(fetch.mock.calls.at(-1)![0], "http://localhost").searchParams.get(
+        "salary_from",
+      ),
+    ).toBe("0");
+  });
   it("hides private vacancies when region suggestions return 401", async () => {
     vi.useFakeTimers();
-    vi.stubGlobal("fetch", vi.fn().mockImplementation((url: string) => Promise.resolve(
-      url.includes("/hh/areas?") ? response({}, 401) : response(list()),
-    )));
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockImplementation((url: string) =>
+          Promise.resolve(
+            url.includes("/hh/areas?") ? response({}, 401) : response(list()),
+          ),
+        ),
+    );
     const router = await open();
     await wrapper.get(".source-toggle").trigger("click");
     await wrapper.get('[role="combobox"]').trigger("focus");
@@ -64,11 +282,24 @@ describe("Vacancies API search", () => {
   });
   it("submits the selected region ID and clears it for an unrestricted search", async () => {
     vi.useFakeTimers();
-    const fetch = vi.fn().mockImplementation((url: string) => Promise.resolve(response(
-      url.includes("/hh/areas?") ? [{ id: "1", name: "Москва", parent_name: "Россия" }]
-      : url.endsWith("/collection/hh/run") ? { created: 1, updated: 0, skipped: 0, failed: 0, next_page: 1, exhausted: false }
-      : list(),
-    )));
+    const fetch = vi.fn().mockImplementation((url: string) =>
+      Promise.resolve(
+        response(
+          url.includes("/hh/areas?")
+            ? [{ id: "1", name: "Москва", parent_name: "Россия" }]
+            : url.endsWith("/collection/hh/run")
+              ? {
+                  created: 1,
+                  updated: 0,
+                  skipped: 0,
+                  failed: 0,
+                  next_page: 1,
+                  exhausted: false,
+                }
+              : list(),
+        ),
+      ),
+    );
     vi.stubGlobal("fetch", fetch);
     await open();
     await wrapper.get(".source-toggle").trigger("click");
@@ -81,13 +312,17 @@ describe("Vacancies API search", () => {
     await wrapper.get('[role="option"]').trigger("click");
     await wrapper.get(".collection-form").trigger("submit");
     await flushPromises();
-    const first = fetch.mock.calls.find(([url]) => url.endsWith("/collection/hh/run"))!;
+    const first = fetch.mock.calls.find(([url]) =>
+      url.endsWith("/collection/hh/run"),
+    )!;
     expect(JSON.parse(first[1].body).area).toBe("1");
     expect(wrapper.text()).not.toMatch(/Код региона|ID региона/);
     await wrapper.get('[aria-label="Очистить регион"]').trigger("click");
     await wrapper.get(".collection-form").trigger("submit");
     await flushPromises();
-    const calls = fetch.mock.calls.filter(([url]) => url.endsWith("/collection/hh/run"));
+    const calls = fetch.mock.calls.filter(([url]) =>
+      url.endsWith("/collection/hh/run"),
+    );
     expect(JSON.parse(calls[1]![1].body).area).toBeNull();
   });
 
@@ -96,17 +331,36 @@ describe("Vacancies API search", () => {
     vi.stubGlobal("fetch", fetch);
     await open();
     await wrapper.get(".source-toggle").trigger("click");
-    const validity = vi.spyOn(wrapper.get<HTMLFormElement>(".collection-form").element, "reportValidity").mockReturnValue(false);
-    await wrapper.findAll("button").find(b => b.text() === "Проверить новые вакансии")!.trigger("click");
+    const validity = vi
+      .spyOn(
+        wrapper.get<HTMLFormElement>(".collection-form").element,
+        "reportValidity",
+      )
+      .mockReturnValue(false);
+    await wrapper
+      .findAll("button")
+      .find((b) => b.text() === "Проверить новые вакансии")!
+      .trigger("click");
     expect(validity).toHaveBeenCalledOnce();
     expect(fetch).toHaveBeenCalledTimes(1);
   });
   it("continues the same search and explicitly restarts without a client-side offset", async () => {
-    const fetch = vi.fn().mockImplementation((url: string) => Promise.resolve(response(
-      url.endsWith("/collection/hh/run")
-        ? { created: 1, updated: 0, skipped: 19, failed: 0, next_page: 1, exhausted: false }
-        : list(),
-    )));
+    const fetch = vi.fn().mockImplementation((url: string) =>
+      Promise.resolve(
+        response(
+          url.endsWith("/collection/hh/run")
+            ? {
+                created: 1,
+                updated: 0,
+                skipped: 19,
+                failed: 0,
+                next_page: 1,
+                exhausted: false,
+              }
+            : list(),
+        ),
+      ),
+    );
     vi.stubGlobal("fetch", fetch);
     await open();
     await wrapper.get(".source-toggle").trigger("click");
@@ -117,41 +371,98 @@ describe("Vacancies API search", () => {
     }
     expect(wrapper.text()).toContain("Продолжить поиск");
     expect(wrapper.text()).toContain("Уже есть в списке: 19");
-    expect(wrapper.text()).not.toMatch(/общую базу|ID региона|пропущено|Сбор завершён/);
-    await wrapper.findAll("button").find(b => b.text() === "Проверить новые вакансии")!.trigger("click");
+    expect(wrapper.text()).not.toMatch(
+      /общую базу|ID региона|пропущено|Сбор завершён/,
+    );
+    await wrapper
+      .findAll("button")
+      .find((b) => b.text() === "Проверить новые вакансии")!
+      .trigger("click");
     await flushPromises();
-    const calls = fetch.mock.calls.filter(([url]) => url.endsWith("/collection/hh/run"));
-    expect(calls.map(([, init]) => JSON.parse(init.body).restart)).toEqual([false, false, true]);
-    expect(JSON.parse(calls[0]![1].body)).toEqual({ text: "Python", area: null, pages_limit: 1, restart: false });
+    const calls = fetch.mock.calls.filter(([url]) =>
+      url.endsWith("/collection/hh/run"),
+    );
+    expect(calls.map(([, init]) => JSON.parse(init.body).restart)).toEqual([
+      false,
+      false,
+      true,
+    ]);
+    expect(JSON.parse(calls[0]![1].body)).toEqual({
+      text: "Python",
+      area: null,
+      pages_limit: 1,
+      restart: false,
+    });
   });
 
   it("stops at the end and allows a different query or an explicit fresh check", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockImplementation((url: string) => Promise.resolve(response(
-      url.endsWith("/collection/hh/run")
-        ? { created: 0, updated: 0, skipped: 20, failed: 0, next_page: 2, exhausted: true }
-        : list(),
-    ))));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation((url: string) =>
+        Promise.resolve(
+          response(
+            url.endsWith("/collection/hh/run")
+              ? {
+                  created: 0,
+                  updated: 0,
+                  skipped: 20,
+                  failed: 0,
+                  next_page: 2,
+                  exhausted: true,
+                }
+              : list(),
+          ),
+        ),
+      ),
+    );
     await open();
     await wrapper.get(".source-toggle").trigger("click");
     await wrapper.get(".collection-form input").setValue("Python");
     await wrapper.get(".collection-form").trigger("submit");
     await flushPromises();
-    expect(wrapper.get('.collection-form button[type="submit"]').attributes("disabled")).toBeDefined();
-    expect(wrapper.text()).toContain("Все доступные вакансии по этому запросу просмотрены");
-    expect(wrapper.findAll("button").find(b => b.text() === "Проверить новые вакансии")!.attributes("disabled")).toBeUndefined();
+    expect(
+      wrapper
+        .get('.collection-form button[type="submit"]')
+        .attributes("disabled"),
+    ).toBeDefined();
+    expect(wrapper.text()).toContain(
+      "Все доступные вакансии по этому запросу просмотрены",
+    );
+    expect(
+      wrapper
+        .findAll("button")
+        .find((b) => b.text() === "Проверить новые вакансии")!
+        .attributes("disabled"),
+    ).toBeUndefined();
     await wrapper.get(".collection-form input").setValue("Java");
-    expect(wrapper.get('.collection-form button[type="submit"]').attributes("disabled")).toBeUndefined();
-    expect(wrapper.text()).not.toContain("Все доступные вакансии по этому запросу просмотрены");
+    expect(
+      wrapper
+        .get('.collection-form button[type="submit"]')
+        .attributes("disabled"),
+    ).toBeUndefined();
+    expect(wrapper.text()).not.toContain(
+      "Все доступные вакансии по этому запросу просмотрены",
+    );
   });
 
   it("can retry a failed collection without silently restarting the search", async () => {
     let requests = 0;
     const fetch = vi.fn().mockImplementation((url: string) => {
-      if (!url.endsWith("/collection/hh/run")) return Promise.resolve(response(list()));
+      if (!url.endsWith("/collection/hh/run"))
+        return Promise.resolve(response(list()));
       requests++;
-      return Promise.resolve(requests === 1 ? response({}, 503) : response({
-        created: 1, updated: 0, skipped: 0, failed: 0, next_page: 2, exhausted: false,
-      }));
+      return Promise.resolve(
+        requests === 1
+          ? response({}, 503)
+          : response({
+              created: 1,
+              updated: 0,
+              skipped: 0,
+              failed: 0,
+              next_page: 2,
+              exhausted: false,
+            }),
+      );
     });
     vi.stubGlobal("fetch", fetch);
     await open();
@@ -163,14 +474,23 @@ describe("Vacancies API search", () => {
     await wrapper.get(".collection-form").trigger("submit");
     await flushPromises();
     expect(wrapper.text()).toContain("Найдено новых: 1");
-    const calls = fetch.mock.calls.filter(([url]) => url.endsWith("/collection/hh/run"));
-    expect(calls.map(([, init]) => JSON.parse(init.body).restart)).toEqual([false, false]);
+    const calls = fetch.mock.calls.filter(([url]) =>
+      url.endsWith("/collection/hh/run"),
+    );
+    expect(calls.map(([, init]) => JSON.parse(init.body).restart)).toEqual([
+      false,
+      false,
+    ]);
   });
 
   it("asks to reconnect HH on collection 409 instead of claiming another run", async () => {
-    vi.stubGlobal("fetch", vi.fn()
-      .mockResolvedValueOnce(response(list()))
-      .mockResolvedValueOnce(response({}, 409)));
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce(response(list()))
+        .mockResolvedValueOnce(response({}, 409)),
+    );
     await open();
     await wrapper.get(".source-toggle").trigger("click");
     await wrapper.get(".collection-form input").setValue("Python");

@@ -7,7 +7,41 @@
           Ищите вакансии для разработчиков по технологиям, компании и городу.
         </p>
       </div>
+      <div class="save-action">
+        <UiButton
+          data-action="save-search"
+          variant="secondary"
+          :disabled="!applied.text.trim() || saving"
+          :aria-describedby="
+            !applied.text.trim() ? 'save-search-hint' : undefined
+          "
+          @click="openSave"
+          ><UiIcon name="bookmark" />Сохранить поиск</UiButton
+        ><span
+          v-if="!applied.text.trim()"
+          id="save-search-hint"
+          class="field-hint"
+          >Сначала примените текст поиска</span
+        >
+      </div>
     </div>
+    <UiAlert v-if="saveSuccess" tone="success"
+      >Поиск сохранён. Он доступен в разделе «Сохранённые поиски».</UiAlert
+    >
+    <SavedSearchDialog
+      :open="saveOpen"
+      :initial-values="saveValues"
+      :submitting="saving"
+      :error="saveError"
+      :field-errors="saveFieldErrors"
+      :notice="saveNotice"
+      @close="saveOpen = false"
+      @create="saveSearch"
+      @clear-errors="
+        saveError = null;
+        saveFieldErrors = {};
+      "
+    />
     <form class="filters panel" @submit.prevent="applyFilters">
       <div class="search-row">
         <label class="field query-field" for="vacancy-query"
@@ -67,52 +101,98 @@
           </div>
         </details>
         <UiButton
-          v-if="hasFilters"
+          v-if="hasFilters || draftChanged"
           variant="ghost"
           class="reset-filters"
           @click="resetFilters"
           >Сбросить</UiButton
         >
       </div>
+      <p v-if="draftChanged" class="draft-hint" role="status">
+        Условия изменены. Нажмите «Найти вакансии», чтобы обновить результаты.
+      </p>
     </form>
+    <div
+      v-if="chips.length"
+      class="applied-filters"
+      role="group"
+      aria-label="Применённые условия"
+    >
+      <span class="field-hint">Применено:</span>
+      <button
+        v-for="chip in chips"
+        :key="chip.key"
+        type="button"
+        class="filter-chip"
+        :aria-label="`Убрать фильтр: ${chip.label}`"
+        @click="removeFilter(chip.key)"
+      >
+        {{ chip.label }} <span aria-hidden="true">×</span>
+      </button>
+    </div>
     <div class="source-toolbar">
-      <p>Поиск по вакансиям в списке</p>
+      <p v-if="collectionRunning" role="status">
+        Загрузка с HH.ru продолжается…
+      </p>
+      <p v-else>Поиск по сохранённым вакансиям</p>
       <button
         class="source-toggle"
         :aria-expanded="showCollection"
         aria-controls="collection-panel"
         @click="showCollection = !showCollection"
       >
-        Получить свежие с HH.ru <span aria-hidden="true">↗</span>
+        {{ collectionRunning ? "Загрузка с HH.ru…" : "Загрузить с HH.ru" }}
+        <UiIcon name="refresh" />
       </button>
     </div>
     <div
-      v-if="showCollection"
+      v-show="showCollection"
       id="collection-panel"
       class="collection-panel panel"
     >
       <h2>Получить вакансии с HH.ru</h2>
       <p class="muted">
-        Найдём вакансии по вашему запросу и добавим их в список.
-        При повторном поиске продолжим с того места, где остановились.
-        Для этого войдите через HH.ru.
+        Это отдельный поиск на HH.ru: загрузим вакансии и добавим их в список.
+        При повторном поиске продолжим с того места, где остановились. Для этого
+        войдите через HH.ru.
       </p>
-      <form ref="collectionForm" class="collection-form" @submit.prevent="collect()">
+      <form
+        ref="collectionForm"
+        class="collection-form"
+        @submit.prevent="collect()"
+      >
         <div class="collection-fields">
           <div class="field collection-query">
             <label for="collection-query">Должность или технология</label>
-            <input id="collection-query" v-model.trim="collectionText" required
-              maxlength="255" placeholder="Например, Python developer"
-              :disabled="collectionRunning" />
+            <input
+              id="collection-query"
+              v-model.trim="collectionText"
+              required
+              maxlength="255"
+              placeholder="Например, Python developer"
+              :disabled="collectionRunning"
+            />
           </div>
-          <RegionPicker v-model="collectionArea" :disabled="collectionRunning"
-            @unauthorized="expireAreaSession" />
+          <RegionPicker
+            v-model="collectionArea"
+            :disabled="collectionRunning"
+            @unauthorized="expireAreaSession"
+          />
           <div class="field">
             <label for="collection-pages">Страниц за поиск</label>
-            <input id="collection-pages" v-model.number="collectionPages" type="number"
-              min="1" step="1" required :disabled="collectionRunning"
-              aria-describedby="collection-pages-hint" />
-            <span id="collection-pages-hint" class="field-hint">До 20 вакансий на странице.</span>
+            <input
+              id="collection-pages"
+              v-model.number="collectionPages"
+              type="number"
+              min="1"
+              step="1"
+              required
+              :disabled="collectionRunning"
+              aria-describedby="collection-pages-hint"
+            />
+            <span id="collection-pages-hint" class="field-hint"
+              >До 20 вакансий на странице.</span
+            >
           </div>
         </div>
         <div class="collection-actions">
@@ -120,18 +200,20 @@
             type="submit"
             :busy="collectionRunning"
             :disabled="collectionRunning || collectionAtEnd"
-          >{{
+            >{{
               collectionRunning
                 ? "Получаем…"
                 : hasCollectionProgress
                   ? "Продолжить поиск"
                   : "Получить вакансии"
-            }}</UiButton>
+            }}</UiButton
+          >
           <UiButton
             variant="secondary"
             :disabled="collectionRunning"
             @click="collect(true)"
-          >Проверить новые вакансии</UiButton>
+            >Проверить новые вакансии</UiButton
+          >
         </div>
       </form>
       <p class="field-hint">
@@ -144,7 +226,9 @@
     </div>
     <UiAlert
       v-if="collectionMessage"
-      :tone="collectionError ? 'error' : 'success'"
+      :tone="
+        collectionError ? 'error' : collectionPartial ? 'warning' : 'success'
+      "
       >{{ collectionMessage }}</UiAlert
     >
     <div class="section-heading">
@@ -154,11 +238,10 @@
           result.total.toLocaleString("ru-RU")
         }}</span>
       </h2>
-      <p>Сначала новые</p>
+      <p>По дате публикации: сначала новые</p>
     </div>
-    <AsyncState
-      :loading="loading"
-      :error="loadError"
+    <AsyncState :loading="loading" :error="loadError"
+      ><template #loading><UiSkeleton variant="vacancy" :rows="3" /></template
       ><template #error-actions
         ><UiButton variant="secondary" @click="load"
           >Повторить загрузку</UiButton
@@ -222,7 +305,7 @@
 </template>
 <script setup lang="ts">
 import { computed, onScopeDispose, ref, watch } from "vue";
-import { useRoute, useRouter } from "vue-router";
+import { useRoute, useRouter, type LocationQueryRaw } from "vue-router";
 import { ApiError } from "../api/client";
 import { listVacancies, type VacancyListResponse } from "../api/vacancies";
 import { runCollection } from "../api/collection";
@@ -233,6 +316,13 @@ import VacancyCard from "../components/VacancyCard.vue";
 import EmptyState from "../components/ui/EmptyState.vue";
 import UiButton from "../components/ui/UiButton.vue";
 import UiAlert from "../components/ui/UiAlert.vue";
+import UiIcon from "../components/ui/UiIcon.vue";
+import UiSkeleton from "../components/ui/UiSkeleton.vue";
+import SavedSearchDialog from "../components/SavedSearchDialog.vue";
+import {
+  createSavedSearch,
+  type SavedSearchCreate,
+} from "../api/saved-searches";
 const route = useRoute();
 const router = useRouter();
 const text = ref("");
@@ -253,14 +343,85 @@ const integer = (
 };
 const limit = computed(() => Math.max(1, integer(route.query.limit, 20, 100)));
 const offset = computed(() => integer(route.query.offset, 0));
+const applied = computed(() => ({
+  text: String(route.query.text ?? ""),
+  company: String(route.query.company ?? ""),
+  area: String(route.query.area ?? ""),
+  salary_from:
+    route.query.salary_from == null ? "" : String(route.query.salary_from),
+  salary_to: route.query.salary_to == null ? "" : String(route.query.salary_to),
+}));
+const chips = computed(() =>
+  Object.entries(applied.value)
+    .filter(([, value]) => value !== "")
+    .map(([key, value]) => ({
+      key,
+      label: `${({ text: "Запрос", company: "Компания", area: "Город", salary_from: "Зарплата от", salary_to: "Зарплата до" } as Record<string, string>)[key]}: ${value}`,
+    })),
+);
+const draftChanged = computed(() =>
+  [
+    text.value.trim(),
+    company.value.trim(),
+    area.value.trim(),
+    String(salaryFrom.value),
+    String(salaryTo.value),
+  ].some((value, index) => value !== Object.values(applied.value)[index]),
+);
+async function removeFilter(key: string) {
+  const query: LocationQueryRaw = { ...route.query, offset: 0 };
+  delete query[key];
+  await router.push({ query });
+}
 const filterCount = computed(
-  () =>
-    [company.value, area.value, salaryFrom.value, salaryTo.value].filter(
-      (v) => v !== "",
-    ).length,
+  () => chips.value.filter((chip) => chip.key !== "text").length,
 );
 const hasAdvanced = computed(() => filterCount.value > 0);
-const hasFilters = computed(() => Boolean(text.value || hasAdvanced.value));
+const hasFilters = computed(() => chips.value.length > 0);
+const saveOpen = ref(false);
+const saving = ref(false);
+const saveSuccess = ref(false);
+const saveError = ref<string | null>(null);
+const saveFieldErrors = ref<Readonly<Record<string, string>>>({});
+const saveValues = ref<Partial<SavedSearchCreate>>({});
+const saveNotice = ref("");
+function openSave() {
+  if (saving.value || !applied.value.text.trim()) return;
+  saveError.value = null;
+  saveFieldErrors.value = {};
+  saveSuccess.value = false;
+  saveValues.value = {
+    name: applied.value.text,
+    text: applied.value.text,
+    area: applied.value.area || null,
+    min_salary:
+      applied.value.salary_from === ""
+        ? null
+        : Number(applied.value.salary_from),
+    max_salary:
+      applied.value.salary_to === "" ? null : Number(applied.value.salary_to),
+  };
+  saveNotice.value = applied.value.company
+    ? `Компания «${applied.value.company}» не сохранится: сохранённые поиски поддерживают только запрос, регион и зарплату. Вы можете сохранить эти условия без компании.`
+    : "";
+  saveOpen.value = true;
+}
+async function saveSearch(input: SavedSearchCreate) {
+  if (saving.value || sessionExpired.value) return;
+  saving.value = true;
+  try {
+    await createSavedSearch(input);
+    if (!active || sessionExpired.value) return;
+    saveOpen.value = false;
+    saveSuccess.value = true;
+  } catch (error) {
+    if (!active || sessionExpired.value) return;
+    saveError.value = await message(error);
+    saveFieldErrors.value = error instanceof ApiError ? error.fieldErrors : {};
+  } finally {
+    saving.value = false;
+  }
+}
 const loading = ref(false);
 const loadError = ref<string | null>(null);
 const result = ref<VacancyListResponse | null>(null);
@@ -291,12 +452,17 @@ async function load(): Promise<void> {
   result.value = null;
   try {
     const data = await listVacancies({
-      text: text.value || undefined,
-      company: company.value || undefined,
-      area: area.value || undefined,
+      text: applied.value.text || undefined,
+      company: applied.value.company || undefined,
+      area: applied.value.area || undefined,
       salary_from:
-        salaryFrom.value === "" ? undefined : Number(salaryFrom.value),
-      salary_to: salaryTo.value === "" ? undefined : Number(salaryTo.value),
+        applied.value.salary_from === ""
+          ? undefined
+          : Number(applied.value.salary_from),
+      salary_to:
+        applied.value.salary_to === ""
+          ? undefined
+          : Number(applied.value.salary_to),
       limit: limit.value,
       offset: offset.value,
     });
@@ -375,8 +541,12 @@ const collectionRunning = ref(false);
 const collectionForm = ref<HTMLFormElement>();
 const collectionMessage = ref("");
 const collectionError = ref(false);
+const collectionPartial = ref(false);
 const collectionKey = computed(() =>
-  JSON.stringify([collectionText.value.trim(), collectionArea.value?.id ?? null]),
+  JSON.stringify([
+    collectionText.value.trim(),
+    collectionArea.value?.id ?? null,
+  ]),
 );
 const lastCollection = ref<{ key: string; exhausted: boolean } | null>(null);
 const hasCollectionProgress = computed(
@@ -405,6 +575,7 @@ async function collect(restart = false): Promise<void> {
   collectionRunning.value = true;
   collectionMessage.value = "";
   collectionError.value = false;
+  collectionPartial.value = false;
   const key = collectionKey.value;
   try {
     const data = await runCollection({
@@ -413,10 +584,12 @@ async function collect(restart = false): Promise<void> {
       pages_limit: collectionPages.value,
       restart,
     });
-    if (!active) return;
+    if (!active || sessionExpired.value) return;
     lastCollection.value = { key, exhausted: data.exhausted };
+    collectionPartial.value = data.failed > 0;
     collectionMessage.value = `Найдено новых: ${data.created}. Обновлено: ${data.updated}. Уже есть в списке: ${data.skipped}.`;
-    if (data.failed) collectionMessage.value += ` Не удалось загрузить: ${data.failed}. Попробуйте проверить новые вакансии ещё раз.`;
+    if (data.failed)
+      collectionMessage.value += ` Не удалось загрузить: ${data.failed}. Попробуйте проверить новые вакансии ещё раз.`;
     await load();
   } catch (error) {
     if (!active) return;
@@ -433,6 +606,19 @@ async function collect(restart = false): Promise<void> {
 <style scoped>
 .filters {
   padding: 24px;
+}
+.draft-hint {
+  color: var(--color-link-hover);
+  background: var(--color-accent-soft);
+  font-size: 14px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  margin: 12px 0 0;
+}
+.save-action {
+  display: grid;
+  justify-items: end;
+  gap: 4px;
 }
 .search-row {
   align-items: end;
@@ -482,14 +668,14 @@ async function collect(restart = false): Promise<void> {
 }
 .source-toolbar p {
   color: var(--color-muted);
-  font-size: 12px;
+  font-size: 14px;
   margin: 0;
 }
 .source-toggle {
   background: transparent;
+  border-color: transparent;
   color: var(--color-link);
-  font-size: 13px;
-  padding-inline: 0;
+  font-size: 14px;
 }
 .source-toggle:hover {
   background: transparent !important;
@@ -522,7 +708,22 @@ async function collect(restart = false): Promise<void> {
   vertical-align: middle;
 }
 .vacancy-list {
-  overflow: hidden;
+  overflow: clip;
+}
+.applied-filters {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 16px 0;
+}
+.filter-chip {
+  background: var(--color-accent-soft);
+  color: var(--color-link-hover);
+  border: 1px solid #becbf0;
+  padding: 6px 12px;
+  font-weight: 500;
+  border-radius: 24px;
 }
 .pagination {
   align-items: center;
