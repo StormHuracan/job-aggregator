@@ -1,16 +1,17 @@
 :root {
-  --color-background: #f6f7f9;
+  --color-background: #f6f7fb;
   --color-surface: #fff;
-  --color-surface-subtle: #f0f2f5;
+  --color-surface-subtle: #f0f2f7;
   --color-ink: #202632;
-  --color-text: #343c49;
+  --color-text: #394353;
   --color-muted: #626b79;
   --color-link: #2855d9;
   --color-link-hover: #1e43b1;
-  --focus-field-halo: 0 0 0 3px rgb(40 85 217 / 10%);
+  --color-accent-soft: #edf2ff;
+  --focus-field-halo: 0 0 0 3px rgb(40 85 217 / 22%);
   --focus-error-halo: 0 0 0 3px rgb(181 44 57 / 10%);
-  --color-border: #dfe3e9;
-  --color-control-border: #8993a4;
+  --color-border: #dfe3ec;
+  --color-control-border: #8590a2;
   --color-navy: #202632;
   --color-amber: #f3c64e;
   --color-success: #197447;
@@ -27,6 +28,7 @@
   --space-8: 2rem;
   --space-12: 3rem;
   --radius-sm: 0.5rem;
-  --radius-md: 0.875rem;
-  --shadow-panel: 0 2px 4px rgb(32 38 50 / 3%);
+  --radius-md: 0.75rem;
+  --shadow-panel: 0 2px 6px rgb(32 38 50 / 3%);
+  --shadow-overlay: 0 24px 80px rgb(23 43 58 / 20%);
 }

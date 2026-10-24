@@ -1,7 +1,10 @@
 <script setup lang="ts">
-withDefaults(defineProps<{ tone?: "error" | "success" | "info" }>(), {
-  tone: "info",
-});
+withDefaults(
+  defineProps<{ tone?: "error" | "success" | "info" | "warning" }>(),
+  {
+    tone: "info",
+  },
+);
 </script>
 <template>
   <div
@@ -38,6 +41,11 @@ withDefaults(defineProps<{ tone?: "error" | "success" | "info" }>(), {
   background: var(--color-success-bg);
   border-color: #bbdcc9;
   color: var(--color-success);
+}
+.alert-warning {
+  background: var(--color-warning-bg);
+  border-color: #d4ba7e;
+  color: var(--color-warning);
 }
 .alert :deep(p) {
   margin: 0;

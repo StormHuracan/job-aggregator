@@ -11,12 +11,12 @@ body {
   background: var(--color-background);
   color: var(--color-text);
   font-family: "Manrope", system-ui, sans-serif;
-  font-size: 15px;
+  font-size: 16px;
   line-height: 1.6;
   margin: 0;
 }
 ::selection {
-  background: #dce5ff;
+  background: var(--color-accent-soft);
   color: var(--color-ink);
 }
 a {
@@ -117,7 +117,6 @@ input:not([type="checkbox"]):focus,
 select:focus {
   border-color: var(--color-link);
   box-shadow: var(--focus-field-halo);
-  outline: none;
 }
 input:not([type="checkbox"])[aria-invalid="true"]:focus {
   border-color: var(--color-danger);
@@ -131,9 +130,9 @@ h3 {
   overflow-wrap: anywhere;
 }
 h1 {
-  font-size: clamp(24px, 3vw, 30px);
-  font-weight: 750;
-  letter-spacing: -0.04em;
+  font-size: clamp(26px, 3vw, 32px);
+  font-weight: 700;
+  letter-spacing: -0.035em;
   margin: 0 0 8px;
 }
 h2 {
@@ -162,7 +161,7 @@ summary {
 }
 .app-content {
   margin: 0 auto;
-  max-width: 1168px;
+  max-width: 1224px;
   min-height: calc(100dvh - 80px);
   padding: 48px 32px 64px;
 }
@@ -242,6 +241,7 @@ summary {
     padding: 24px 16px 40px;
   }
   .page-heading {
+    flex-wrap: wrap;
     align-items: start;
     gap: 16px;
     margin-bottom: 20px;
@@ -249,6 +249,23 @@ summary {
   .page-heading p {
     font-size: 14px;
   }
+}
+.sr-only {
+  clip-path: inset(50%);
+  height: 1px;
+  width: 1px;
+  overflow: hidden;
+  position: absolute;
+  white-space: nowrap;
+}
+button,
+a,
+p,
+span {
+  overflow-wrap: anywhere;
+}
+dialog {
+  color: var(--color-text);
 }
 @media (prefers-reduced-motion: reduce) {
   *,
