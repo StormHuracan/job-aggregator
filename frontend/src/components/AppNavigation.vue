@@ -2,10 +2,16 @@
   <header class="header">
     <nav aria-label="Основная навигация" class="navigation">
       <RouterLink class="brand" to="/vacancies"
-        ><span class="brand-mark">JA<span></span></span
-        ><span>Job Aggregator</span></RouterLink
+        ><img
+          class="brand-logo"
+          src="/logo.svg"
+          width="36"
+          height="36"
+          alt=""
+        />
+        <span>Job Aggregator</span></RouterLink
       >
-      <ul class="links">
+      <ul v-if="route.path !== '/login'" class="links">
         <li>
           <RouterLink to="/vacancies"
             ><svg viewBox="0 0 24 24" aria-hidden="true">
@@ -33,7 +39,15 @@
     </nav>
   </header>
 </template>
+<script setup lang="ts">
+import { useRoute } from "vue-router";
+const route = useRoute();
+</script>
 <style scoped>
+.brand-logo {
+  display: block;
+  flex: none;
+}
 .header {
   background: var(--color-surface);
   border-bottom: 1px solid var(--color-border);
@@ -43,7 +57,7 @@
   display: flex;
   gap: 48px;
   margin: 0 auto;
-  max-width: 1168px;
+  max-width: 1224px;
   min-height: 80px;
   padding: 0 32px;
 }
@@ -61,7 +75,7 @@
 }
 .brand-mark {
   align-items: center;
-  background: var(--color-ink);
+  background: var(--color-link);
   border-radius: 10px;
   color: white;
   display: flex;
@@ -72,7 +86,7 @@
   font-size: 13px;
 }
 .brand-mark span {
-  background: var(--color-amber);
+  background: var(--color-accent-soft);
   border: 2px solid white;
   border-radius: 50%;
   bottom: -2px;
@@ -146,13 +160,13 @@ svg {
     width: 28px;
   }
   .links {
-    display: grid;
-    gap: 12px;
-    grid-template-columns: 0.8fr 1.4fr 1.1fr;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0 12px;
     width: 100%;
   }
   .links a {
-    font-size: 12px;
+    font-size: 14px;
     justify-content: center;
     line-height: 1.4;
     padding: 8px 0;
@@ -160,6 +174,7 @@ svg {
   }
   .links li {
     min-width: 0;
+    flex: 1 1 96px;
   }
   .links a {
     width: 100%;
