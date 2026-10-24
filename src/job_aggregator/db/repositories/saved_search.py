@@ -1,7 +1,8 @@
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from job_aggregator.db.models.saved_search import SavedSearch
+from job_aggregator.db.models.saved_search_match import SavedSearchMatch
 
 
 class SavedSearchRepository:
@@ -89,3 +90,17 @@ class UserSavedSearchRepository:
         search.is_enabled = is_enabled
         await self._session.flush()
         return search
+
+    async def delete_for_user(self, user_id: int, search_id: int) -> bool:
+        """Удаляет собственный поиск и его связи, сохраняя сами вакансии."""
+        search = await self.get_for_user(user_id, search_id)
+        if search is None:
+            return False
+        await self._session.execute(
+            delete(SavedSearchMatch).where(
+                SavedSearchMatch.saved_search_id == search_id
+            )
+        )
+        await self._session.delete(search)
+        await self._session.flush()
+        return True
