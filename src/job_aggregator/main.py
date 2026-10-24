@@ -48,21 +48,25 @@ async def lifespan(app: FastAPI):
     try:
         yield
     finally:
-        if scheduler is not None:
-            scheduler.shutdown()
-
-        if telegram_task is not None:
-            telegram_task.cancel()
-            with suppress(asyncio.CancelledError):
-                await telegram_task
-
-        cleanup.cancel()
         try:
-            with suppress(asyncio.CancelledError):
-                await cleanup
-            await app.state.otp_logins.close()
+            if scheduler is not None:
+                scheduler.shutdown()
         finally:
-            await engine.dispose()
+            try:
+                if telegram_task is not None:
+                    telegram_task.cancel()
+                    with suppress(asyncio.CancelledError):
+                        await telegram_task
+            finally:
+                cleanup.cancel()
+                try:
+                    with suppress(asyncio.CancelledError):
+                        await cleanup
+                finally:
+                    try:
+                        await app.state.otp_logins.close()
+                    finally:
+                        await engine.dispose()
 
 
 def create_app() -> FastAPI:

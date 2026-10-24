@@ -1,3 +1,4 @@
+import asyncio
 import hashlib
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
@@ -5,6 +6,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from job_aggregator.db.models.saved_search import SavedSearch
@@ -280,6 +282,126 @@ async def test_blocked_user_binding_is_removed(
     assert delivery is None
 
 
+@pytest.mark.asyncio
+async def test_rate_limit_skips_remaining_messages_in_same_chat(
+    sqlite_session,
+    telegram_session_factory,
+):
+    bot, first_match_id = await create_telegram_scenario(
+        sqlite_session,
+        telegram_session_factory,
+    )
+
+    async with telegram_session_factory() as session:
+        first_match = await session.get(SavedSearchMatch, first_match_id)
+
+        second_vacancy = Vacancy(
+            source="hh",
+            external_id="second-vacancy-rate-limit",
+            title="Backend Developer",
+            company_name="Another Company",
+            source_url="https://example.com/second-vacancy",
+        )
+        session.add(second_vacancy)
+        await session.flush()
+
+        second_match = SavedSearchMatch(
+            saved_search_id=first_match.saved_search_id,
+            vacancy_id=second_vacancy.id,
+            matched_at=datetime.now(UTC) + timedelta(seconds=1),
+        )
+        session.add(second_match)
+        await session.commit()
+        second_match_id = second_match.id
+
+    bot.send_message.side_effect = TelegramAPIError(
+        "Too many requests.",
+        error_code=429,
+        retry_after=30,
+    )
+
+    await bot._deliver_pending()
+
+    # Первое сообщение получает 429, второе не отправляется в обход cooldown.
+    bot.send_message.assert_awaited_once()
+    assert bot.retry_after_until[123456789] > 0
+
+    async with telegram_session_factory() as session:
+        deliveries = (
+            await session.scalars(
+                select(TelegramDelivery.saved_search_match_id).where(
+                    TelegramDelivery.saved_search_match_id.in_(
+                        [first_match_id, second_match_id]
+                    )
+                )
+            )
+        ).all()
+
+    assert deliveries == []
+
+
+@pytest.mark.asyncio
+async def test_blocked_binding_skips_remaining_messages_in_same_chat(
+    sqlite_session,
+    telegram_session_factory,
+):
+    bot, first_match_id = await create_telegram_scenario(
+        sqlite_session,
+        telegram_session_factory,
+    )
+
+    async with telegram_session_factory() as session:
+        first_match = await session.get(SavedSearchMatch, first_match_id)
+
+        second_vacancy = Vacancy(
+            source="hh",
+            external_id="second-vacancy-blocked",
+            title="Python Engineer",
+            company_name="Another Company",
+            source_url="https://example.com/blocked-vacancy",
+        )
+        session.add(second_vacancy)
+        await session.flush()
+
+        second_match = SavedSearchMatch(
+            saved_search_id=first_match.saved_search_id,
+            vacancy_id=second_vacancy.id,
+            matched_at=datetime.now(UTC) + timedelta(seconds=1),
+        )
+        session.add(second_match)
+        await session.commit()
+        second_match_id = second_match.id
+
+    bot.send_message.side_effect = TelegramAPIError(
+        "Bot was blocked by the user.",
+        error_code=403,
+    )
+
+    await bot._deliver_pending()
+
+    # После 403 привязка удаляется, поэтому второе сообщение не отправляется.
+    bot.send_message.assert_awaited_once()
+
+    async with telegram_session_factory() as session:
+        binding = await session.scalar(
+            select(TelegramBinding).where(
+                TelegramBinding.chat_id == 123456789
+            )
+        )
+        deliveries = (
+            await session.scalars(
+                select(TelegramDelivery.saved_search_match_id).where(
+                    TelegramDelivery.saved_search_match_id.in_(
+                        [first_match_id, second_match_id]
+                    )
+                )
+            )
+        ).all()
+
+    assert binding is None
+    assert deliveries == []
+
+
 async def create_link_token(
     session,
     session_factory,
@@ -479,3 +601,48 @@ async def test_duplicate_update_is_ignored(
         state = await session.get(TelegramBotState, 1)
 
     assert state.update_offset == 401
+
+
+@pytest.mark.asyncio
+async def test_run_retries_when_initial_offset_read_fails(
+    telegram_session_factory,
+    monkeypatch,
+):
+    bot = TelegramBot(
+        telegram_session_factory,
+        SimpleNamespace(
+            telegram_bot_token="test-token",
+            telegram_bot_username="test_bot",
+        ),
+        client=AsyncMock(),
+    )
+
+    get_offset = AsyncMock(
+        side_effect=[
+            SQLAlchemyError("Temporary database error."),
+            0,
+            0,
+        ]
+    )
+    poll_updates = AsyncMock(return_value=[])
+    deliver_pending = AsyncMock()
+    sleep = AsyncMock()
+
+    bot._get_offset = get_offset
+    bot._poll_updates = poll_updates
+    bot._deliver_pending = deliver_pending
+
+    monkeypatch.setattr(asyncio, "sleep", sleep)
+
+    async def stop_after_retry():
+        raise asyncio.CancelledError
+
+    deliver_pending.side_effect = stop_after_retry
+
+    with pytest.raises(asyncio.CancelledError):
+        await bot.run()
+
+    assert get_offset.await_count == 3
+    poll_updates.assert_awaited_once_with(0)
+    deliver_pending.assert_awaited_once()
+    sleep.assert_awaited_once_with(5)

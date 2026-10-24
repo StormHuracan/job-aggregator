@@ -435,6 +435,8 @@ class TelegramBot:
                 Vacancy.salary_to,
                 Vacancy.salary_currency,
                 Vacancy.source_url,
+                SavedSearch.user_id,
+                SavedSearchMatch.matched_at,
                 TelegramBinding.chat_id,
             )
             .join(
@@ -483,6 +485,8 @@ class TelegramBot:
                 salary_to,
                 salary_currency,
                 source_url,
+                user_id,
+                matched_at,
                 chat_id,
             ) = row
 
@@ -496,6 +500,25 @@ class TelegramBot:
                 salary_currency=salary_currency,
                 source_url=source_url,
             )
+
+            # Если Telegram установил ограничение, не отправляем сообщения
+            # в этот чат до истечения cooldown.
+            retry_at = self.retry_after_until.get(chat_id)
+            if retry_at is not None and retry_at > loop.time():
+                continue
+
+            # Привязка могла быть удалена или изменена после первоначального SELECT.
+            async with self.session_factory() as session:
+                binding_exists = await session.scalar(
+                    select(TelegramBinding.chat_id).where(
+                        TelegramBinding.chat_id == chat_id,
+                        TelegramBinding.user_id == user_id,
+                        TelegramBinding.connected_at <= matched_at,
+                    )
+                )
+
+            if binding_exists is None:
+                continue
 
             try:
                 await self.send_message(chat_id, message)
@@ -546,10 +569,13 @@ class TelegramBot:
             self.delivery_retry_after_until.pop(match_id, None)
 
     async def run(self) -> None:
-        offset = await self._get_offset()
+        offset: int | None = None
 
         while True:
             try:
+                if offset is None:
+                    offset = await self._get_offset()
+
                 updates = await self._poll_updates(offset)
 
                 for item in updates:
@@ -571,6 +597,7 @@ class TelegramBot:
                     await asyncio.sleep(5)
 
             except SQLAlchemyError:
+                offset = None
                 logger.exception("Database error in Telegram bot.")
                 await asyncio.sleep(5)
 
