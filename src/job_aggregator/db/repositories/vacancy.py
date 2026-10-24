@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any
 
-from sqlalchemy import ColumnElement, func, or_, select
+from sqlalchemy import ColumnElement, Numeric, cast, func, or_, select
 from sqlalchemy.exc import DataError, DBAPIError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -191,7 +191,10 @@ class VacancyRepository:
         """Считает статистику по всем вакансиям средствами базы данных."""
         total = await self._session.scalar(select(func.count()).select_from(Vacancy))
 
-        midpoint = (Vacancy.salary_from + Vacancy.salary_to) / 2
+        midpoint = (
+            cast(Vacancy.salary_from, Numeric) + cast(Vacancy.salary_to, Numeric)
+        ) / 2
+
         salary_row = (
             await self._session.execute(
                 select(func.count(), func.avg(midpoint)).where(

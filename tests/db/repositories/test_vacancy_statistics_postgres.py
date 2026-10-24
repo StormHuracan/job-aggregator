@@ -63,3 +63,24 @@ async def test_statistics_on_postgres_do_not_multiply_matched_vacancies(
     assert stats.salary_sample_size == 2
     assert stats.average_salary == 225000
     assert stats.top_areas == [("Москва", 2), ("Казань", 1)]
+
+
+async def test_average_salary_does_not_overflow_integer_sum(
+    pg_session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    async with pg_session_factory() as session:
+        repo = VacancyRepository(session)
+        await repo.upsert(
+            make_vacancy_data(
+                external_id="1",
+                salary_from=1_500_000_000,
+                salary_to=1_600_000_000,
+                salary_currency="RUR",
+            )
+        )
+        await session.commit()
+
+        stats = await repo.get_statistics()
+
+    assert stats.salary_sample_size == 1
+    assert stats.average_salary == 1_550_000_000.0

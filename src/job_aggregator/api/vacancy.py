@@ -1,6 +1,7 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from job_aggregator.api.dependencies import get_current_user
@@ -38,7 +39,11 @@ async def get_vacancy_statistics(
     session: AsyncSession = Depends(get_db_session),
 ) -> VacancyStatisticsResponse:
     """Статистика по всем сохранённым вакансиям: количество, средняя, топ городов."""
-    statistics = await VacancyRepository(session).get_statistics()
+    try:
+        statistics = await VacancyRepository(session).get_statistics()
+    except SQLAlchemyError:
+        await session.rollback()
+        raise HTTPException(500, "Не удалось загрузить статистику") from None
     return VacancyStatisticsResponse(
         total_vacancies=statistics.total_vacancies,
         salary_currency="RUR",
