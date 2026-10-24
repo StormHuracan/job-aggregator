@@ -3,13 +3,21 @@ from typing import Any
 from urllib.parse import parse_qs, urlparse
 
 import pytest
+from hh_applicant_tool import api as hh_api
+from hh_applicant_tool.api import errors as hh_errors
+from requests import Response
 
-from job_aggregator.integrations.hh.client import HHClient, HHOAuthClient
+from job_aggregator.integrations.hh.client import (
+    HHAPIClient,
+    HHClient,
+    HHOAuthClient,
+)
 from job_aggregator.integrations.hh.dto import HHVacancySearchParams
 from job_aggregator.integrations.hh.errors import (
     HHIntegrationError,
     HHPermanentRequestError,
 )
+from job_aggregator.schemas.hh_token import HHAccountTokenData
 
 
 class _StubApiClient:
@@ -209,3 +217,77 @@ async def test_get_authorization_url():
     res = parse_qs(query)
     assert res["state"] == [state]
     assert res["client_id"] == ["12234"]
+
+
+async def test_search_vacancies_retries_rate_limit(monkeypatch):
+    delays = []
+    calls = []
+
+    async def record_sleep(seconds: float) -> None:
+        delays.append(seconds)
+
+    class FakeApiClient:
+        def __init__(self, **kwargs):
+            pass
+
+        def request(self, method, endpoint, params=None):
+            calls.append((method, endpoint, params))
+
+            if len(calls) == 1:
+                response = Response()
+                response.status_code = 429
+                raise hh_errors.LimitExceeded(
+                    response,
+                    {"errors": [{"type": "limit_exceeded", "value": "private"}]},
+                )
+
+            return {
+                "items": [],
+                "page": 2,
+                "found": 0,
+                "pages": 0,
+            }
+
+        def get_access_token(self):
+            return {
+                "access_token": "test-access",
+                "refresh_token": "test-refresh",
+                "access_expires_at": 1893456000,
+            }
+
+    monkeypatch.setattr(hh_api, "ApiClient", FakeApiClient)
+
+    tokens = HHAccountTokenData(
+        access_token="test-access",
+        refresh_token="test-refresh",
+        access_expires_at=datetime(2030, 1, 1, tzinfo=UTC),
+    )
+    api_client = HHAPIClient(
+        tokens,
+        allow_token_refresh=False,
+        retry_sleep=record_sleep,
+    )
+    client = HHClient(api_client)
+
+    try:
+        params = HHVacancySearchParams(
+            text="Python",
+            area="1",
+            page=2,
+            per_page=50,
+        )
+
+        result = await client.search_vacancies(params)
+
+        assert result.page == 2
+        assert result.items == []
+        assert len(calls) == 2
+        assert calls[0] == calls[1]
+        assert calls[0] == (
+            "GET",
+            "/vacancies",
+            {"text": "Python", "page": 2, "per_page": 50, "area": "1"},
+        )
+        assert delays == [0.5]
+    finally:
+        api_client.close()
