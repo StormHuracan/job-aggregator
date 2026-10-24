@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from job_aggregator.api.dependencies import SESSION_COOKIE_NAME, get_current_user
 from job_aggregator.db.models.user import User
 from job_aggregator.db.repositories.hh_account import HHAccountRepository
+from job_aggregator.db.repositories.saved_search_match import SavedSearchMatchRepository
 from job_aggregator.db.repositories.user import UserSettingsRepository
 from job_aggregator.db.session import get_db_session
 from job_aggregator.schemas.user import (
@@ -23,7 +24,7 @@ async def current_user(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db_session),
 ) -> CurrentUserResponse:
-    """Реальный профиль; null-счётчик означает недоступность хранилища JA-66."""
+    """Профиль и число непросмотренных совпадений текущего пользователя."""
     try:
         settings = await UserSettingsRepository(db).get_or_create(user.id)
         account = await HHAccountRepository(db).get_by_user_id(user.id)
@@ -32,7 +33,9 @@ async def current_user(
             display_name=user.display_name,
             hh_connected=account is not None,
             access_expires_at=account.access_expires_at if account else None,
-            new_matches_count=None,
+            new_matches_count=await SavedSearchMatchRepository(
+                db
+            ).count_unseen_for_user(user.id),
             settings=UserSettingsResponse(
                 default_area=settings.default_area,
                 default_pages_limit=settings.default_pages_limit,
@@ -44,6 +47,24 @@ async def current_user(
         raise HTTPException(500, "Не удалось загрузить профиль") from None
     response.headers["Cache-Control"] = "no-store"
     return result
+
+
+@router.post("/me/matches/mark-seen", status_code=204)
+async def mark_matches_seen(
+    response: Response,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db_session),
+) -> None:
+    """Сохраняет просмотр непрочитанных совпадений только текущего владельца."""
+    try:
+        await SavedSearchMatchRepository(db).mark_seen_for_user(user.id)
+        await db.commit()
+    except SQLAlchemyError:
+        await db.rollback()
+        raise HTTPException(
+            500, "Не удалось отметить совпадения просмотренными"
+        ) from None
+    response.headers["Cache-Control"] = "no-store"
 
 
 @router.patch("/me/settings", response_model=UserSettingsResponse)
