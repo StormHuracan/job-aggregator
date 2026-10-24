@@ -384,9 +384,7 @@ async def test_blocked_binding_skips_remaining_messages_in_same_chat(
 
     async with telegram_session_factory() as session:
         binding = await session.scalar(
-            select(TelegramBinding).where(
-                TelegramBinding.chat_id == 123456789
-            )
+            select(TelegramBinding).where(TelegramBinding.chat_id == 123456789)
         )
         deliveries = (
             await session.scalars(
