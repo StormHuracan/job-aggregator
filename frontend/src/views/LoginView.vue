@@ -95,7 +95,7 @@ watch(
     aria-labelledby="login-heading"
   >
     <div v-if="!serviceUnavailable" class="login-story">
-      <span class="story-logo" aria-hidden="true">JA</span>
+      <img class="story-logo" src="/logo.svg" width="64" height="64" alt="" />
       <h2>Меньше повторяющихся запросов.<br />Больше подходящих вакансий.</h2>
       <p>
         Ищите вакансии для разработчиков и сохраняйте параметры, к которым
@@ -104,12 +104,14 @@ watch(
       <span class="story-caption">Job Aggregator</span>
     </div>
     <div class="login-card panel">
-      <span
+      <img
         class="login-mark"
         :class="{ 'unavailable-mark': serviceUnavailable }"
-        aria-hidden="true"
-        >JA</span
-      >
+        src="/logo.svg"
+        width="44"
+        height="44"
+        alt=""
+      />
       <template v-if="serviceUnavailable">
         <h1 id="login-heading">Сервис временно недоступен</h1>
         <p class="unavailable-copy" role="status">
@@ -181,7 +183,7 @@ watch(
   place-items: center;
   width: 64px;
   height: 64px;
-  background: var(--color-accent-soft);
+  background: transparent;
   color: var(--color-link-hover);
   border-radius: 16px;
   font-size: 24px;
@@ -199,7 +201,7 @@ watch(
 }
 .login-mark {
   align-items: center;
-  background: var(--color-link);
+  background: transparent;
   color: white;
   display: flex;
   font-size: 16px;
