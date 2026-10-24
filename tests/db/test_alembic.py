@@ -7,6 +7,12 @@ from tests.paths import PROJECT_ROOT
 
 def test_offline_migrations_accept_percent_encoded_password() -> None:
     env = os.environ.copy()
+    env["PYTHONPATH"] = os.pathsep.join(
+        filter(
+            None,
+            [str(PROJECT_ROOT / "src"), env.get("PYTHONPATH", "")],
+        )
+    )
     env["DATABASE_URL"] = "postgresql+asyncpg://test:sample%40password@localhost/test"
 
     result = subprocess.run(
@@ -24,6 +30,12 @@ def test_offline_migrations_accept_percent_encoded_password() -> None:
 
 def test_offline_migration_creates_user_and_session_constraints() -> None:
     env = os.environ.copy()
+    env["PYTHONPATH"] = os.pathsep.join(
+        filter(
+            None,
+            [str(PROJECT_ROOT / "src"), env.get("PYTHONPATH", "")],
+        )
+    )
     env["DATABASE_URL"] = "postgresql+asyncpg://test:sample%40password@localhost/test"
 
     result = subprocess.run(

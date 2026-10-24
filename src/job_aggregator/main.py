@@ -9,6 +9,7 @@ from job_aggregator.core.config import get_settings
 from job_aggregator.core.logging import configure_logging
 from job_aggregator.db.session import create_engine_and_factory
 from job_aggregator.jobs.scheduler import create_scheduler
+from job_aggregator.jobs.telegram import run_telegram_bot
 from job_aggregator.services.otp_login import OTPLoginService
 
 
@@ -21,6 +22,12 @@ async def _expire_otp_flows(service: OTPLoginService) -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     settings = get_settings()
+
+    if settings.telegram_enabled and (
+        not settings.telegram_bot_token or not settings.telegram_bot_username
+    ):
+        raise RuntimeError("Telegram is enabled, but its token or username is missing.")
+
     engine, session_factory = create_engine_and_factory(settings.database_url)
 
     app.state.engine = engine
@@ -33,11 +40,22 @@ async def lifespan(app: FastAPI):
     app.state.scheduler = scheduler
     cleanup = asyncio.create_task(_expire_otp_flows(app.state.otp_logins))
 
+    telegram_task = None
+
+    if settings.telegram_enabled:
+        telegram_task = asyncio.create_task(run_telegram_bot(session_factory, settings))
+
     try:
         yield
     finally:
         if scheduler is not None:
             scheduler.shutdown()
+
+        if telegram_task is not None:
+            telegram_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await telegram_task
+
         cleanup.cancel()
         try:
             with suppress(asyncio.CancelledError):
