@@ -147,6 +147,7 @@
       :tone="collectionError ? 'error' : 'success'"
       >{{ collectionMessage }}</UiAlert
     >
+    <VacancyStatistics ref="statistics" />
     <div class="section-heading">
       <h2>
         Вакансии
@@ -230,11 +231,13 @@ import type { HHAreaSuggestion } from "../api/hh-areas";
 import RegionPicker from "../components/RegionPicker.vue";
 import AsyncState from "../components/AsyncState.vue";
 import VacancyCard from "../components/VacancyCard.vue";
+import VacancyStatistics from "../components/VacancyStatistics.vue";
 import EmptyState from "../components/ui/EmptyState.vue";
 import UiButton from "../components/ui/UiButton.vue";
 import UiAlert from "../components/ui/UiAlert.vue";
 const route = useRoute();
 const router = useRouter();
+const statistics = ref<InstanceType<typeof VacancyStatistics>>();
 const text = ref("");
 const company = ref("");
 const area = ref("");
@@ -417,6 +420,7 @@ async function collect(restart = false): Promise<void> {
     lastCollection.value = { key, exhausted: data.exhausted };
     collectionMessage.value = `Найдено новых: ${data.created}. Обновлено: ${data.updated}. Уже есть в списке: ${data.skipped}.`;
     if (data.failed) collectionMessage.value += ` Не удалось загрузить: ${data.failed}. Попробуйте проверить новые вакансии ещё раз.`;
+    void statistics.value?.reload();
     await load();
   } catch (error) {
     if (!active) return;
