@@ -48,6 +48,38 @@ afterEach(() => {
 });
 
 describe("Saved searches live API", () => {
+  it.each([200, 500])(
+    "changes toggle status only once after confirmation (%s)",
+    async (status) => {
+      let finish!: (response: Response) => void;
+      const fetch = vi
+        .fn()
+        .mockResolvedValueOnce(json([search]))
+        .mockImplementationOnce(
+          () =>
+            new Promise<Response>((resolve) => {
+              finish = resolve;
+            }),
+        );
+      vi.stubGlobal("fetch", fetch);
+      await open();
+      const label = () => wrapper.get(".switch-label").text();
+      expect(label()).toBe("Включён");
+      await wrapper.get('input[role="switch"]').setValue(false);
+      expect(label()).toBe("Включён");
+      expect(wrapper.get(".switch-track").attributes("data-checked")).toBe(
+        "true",
+      );
+      await wrapper.get('input[role="switch"]').trigger("change");
+      expect(fetch).toHaveBeenCalledTimes(2);
+      finish(json({ ...search, is_enabled: false }, status));
+      await flushPromises();
+      expect(label()).toBe(status === 200 ? "Выключен" : "Включён");
+      expect(wrapper.get(".switch-track").attributes("data-checked")).toBe(
+        status === 200 ? "false" : "true",
+      );
+    },
+  );
   it("confirms deletion and removes the row only after server success", async () => {
     let finish!: (response: Response) => void;
     const fetch = vi

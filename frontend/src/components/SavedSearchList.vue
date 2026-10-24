@@ -47,18 +47,13 @@
             :model-value="search.is_enabled"
             :label="`Активность поиска «${search.name}»`"
             :disabled="pendingIds.includes(search.id)"
+            :aria-busy="pendingIds.includes(search.id) || undefined"
             :described-by="
               toggleErrors[search.id] ? 'toggle-error-' + search.id : undefined
             "
             @update:model-value="emit('toggle', search.id, $event)"
           >
-            {{
-              pendingIds.includes(search.id)
-                ? "Сохраняем…"
-                : search.is_enabled
-                  ? "Включён"
-                  : "Выключен"
-            }}
+            {{ search.is_enabled ? "Включён" : "Выключен" }}
           </UiSwitch>
           <RouterLink
             class="results-link"
