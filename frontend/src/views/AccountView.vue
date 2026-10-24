@@ -7,110 +7,155 @@
       </div>
     </div>
     <AsyncState :error="error" :loading="loading"
+      ><template #loading><UiSkeleton variant="profile" /></template
       ><template #error-actions
         ><UiButton variant="secondary" @click="load"
           >Повторить</UiButton
         ></template
       >
       <template v-if="user">
-        <div class="profile-grid">
-          <div class="panel profile">
-            <div class="avatar" aria-hidden="true">
-              {{ user.display_name.slice(0, 1) }}
+        <div class="account-sheet">
+          <section
+            class="account-row profile-block"
+            aria-labelledby="profile-heading"
+          >
+            <div class="row-heading">
+              <h2 id="profile-heading">Профиль</h2>
+              <p>Ваш аккаунт в Job Aggregator.</p>
             </div>
-            <div>
-              <p class="field-hint">Профиль пользователя</p>
-              <h2>{{ user.display_name }}</h2>
+            <div class="profile">
+              <div class="avatar" aria-hidden="true">
+                {{ user.display_name.slice(0, 1) }}
+              </div>
+              <div>
+                <p class="profile-name">{{ user.display_name }}</p>
+                <span class="field-hint">Аккаунт № {{ user.id }}</span>
+              </div>
             </div>
-          </div>
-          <div class="panel connection">
-            <div class="connection-heading">
-              <h2>Подключение HH.ru</h2>
-              <span
-                class="connection-status"
-                :class="{ connected: user.hh_connected }"
-                >{{ user.hh_connected ? "Подключён" : "Не подключён" }}</span
-              >
+          </section>
+          <section
+            class="account-row integration-block"
+            aria-labelledby="integration-heading"
+          >
+            <div class="row-heading">
+              <h2 id="integration-heading">Интеграции</h2>
+              <p>Доступ к внешнему источнику вакансий.</p>
             </div>
-            <p>Для получения вакансий нужен доступ к вашему аккаунту HH.ru.</p>
-            <RouterLink class="connection-link" to="/login"
-              >{{
-                user.hh_connected
-                  ? "Подключить заново"
-                  : "Перейти к подключению"
-              }}
-              <span aria-hidden="true">↗</span></RouterLink
-            >
-          </div>
-        </div>
-        <div class="account-workspace">
-          <form class="settings-form panel" @submit.prevent="save">
-            <div>
-              <h2>Настройки поиска</h2>
-              <p class="muted">Регион и количество страниц для поиска.</p>
-            </div>
-            <label class="field"
-              >Регион по умолчанию<input
-                v-model.trim="defaultArea"
-                @input="clearFieldError('default_area')"
-                maxlength="255"
-                placeholder="Например, Москва"
-                :disabled="pending !== null"
-                :aria-invalid="fieldErrors.default_area ? true : undefined"
-                :aria-describedby="
-                  fieldErrors.default_area ? 'default-area-error' : undefined
-                "
-              /><span
-                v-if="fieldErrors.default_area"
-                id="default-area-error"
-                class="error-text"
-                role="alert"
-                >{{ fieldErrors.default_area }}</span
-              ></label
-            ><label class="field"
-              >Сколько страниц посмотреть за один поиск<input
-                v-model.number="pagesLimit"
-                @input="clearFieldError('default_pages_limit')"
-                min="1"
-                step="1"
-                type="number"
-                required
-                :disabled="pending !== null"
-                :aria-invalid="
-                  fieldErrors.default_pages_limit ? true : undefined
-                "
-                :aria-describedby="
-                  fieldErrors.default_pages_limit
-                    ? 'pages-limit-error'
-                    : undefined
-                "
-              /><span
-                v-if="fieldErrors.default_pages_limit"
-                id="pages-limit-error"
-                class="error-text"
-                role="alert"
-                >{{ fieldErrors.default_pages_limit }}</span
-              ><span class="field-hint"
-                >Больше страниц — больше вакансий и дольше ожидание.</span
-              ></label
-            ><UiAlert
-              v-if="feedback"
-              :tone="actionError ? 'error' : 'success'"
-              >{{ feedback }}</UiAlert
-            >
-            <div class="form-actions">
-              <UiButton
-                type="submit"
-                :disabled="pending !== null"
-                :busy="pending === 'save'"
+            <div class="connection">
+              <div class="connection-heading">
+                <h2>Подключение HH.ru</h2>
+                <UiBadge :tone="user.hh_connected ? 'accent' : 'warning'">{{
+                  user.hh_connected ? "Подключён" : "Не подключён"
+                }}</UiBadge>
+              </div>
+              <p>
+                Для получения вакансий нужен доступ к вашему аккаунту HH.ru.
+              </p>
+              <p v-if="user.hh_connected" class="expiry">{{ expiryLabel }}</p>
+              <p v-if="accessExpired" class="field-hint">
+                Приложение попробует обновить доступ при следующем запросе. Если
+                это не удастся, подключите HH.ru заново.
+              </p>
+              <p class="field-hint">
+                Статус сохранённого подключения, не онлайн-проверка HH.ru.
+              </p>
+              <RouterLink class="connection-link" to="/login"
                 >{{
-                  pending === "save" ? "Сохраняем…" : "Сохранить настройки"
-                }}</UiButton
-              >
+                  user.hh_connected
+                    ? "Подключить заново"
+                    : "Перейти к подключению"
+                }}
+                <UiIcon name="link" :size="16"
+              /></RouterLink>
             </div>
-          </form>
-          <aside class="account-aside">
-            <div v-if="user.new_matches_count !== null" class="panel matches">
+          </section>
+          <section
+            class="account-row settings-block"
+            aria-labelledby="settings-heading"
+          >
+            <div class="row-heading">
+              <h2 id="settings-heading">Настройки поиска</h2>
+              <p>
+                Параметры для сбора сохранённых поисков. Ручная загрузка с HH.ru
+                настраивается отдельно.
+              </p>
+            </div>
+            <form class="settings-form" @submit.prevent="save">
+              <label class="field"
+                >Регион по умолчанию<input
+                  v-model.trim="defaultArea"
+                  @input="clearFieldError('default_area')"
+                  maxlength="255"
+                  placeholder="Например, Москва"
+                  :disabled="pending !== null"
+                  :aria-invalid="fieldErrors.default_area ? true : undefined"
+                  :aria-describedby="
+                    fieldErrors.default_area ? 'default-area-error' : undefined
+                  "
+                /><span
+                  v-if="fieldErrors.default_area"
+                  id="default-area-error"
+                  class="error-text"
+                  role="alert"
+                  >{{ fieldErrors.default_area }}</span
+                ><span class="field-hint"
+                  >Регион пока хранится как предпочтение и не применяется
+                  автоматически. В сохранённом поиске укажите регион
+                  отдельно.</span
+                ></label
+              ><label class="field"
+                >Сколько страниц посмотреть за один поиск<input
+                  v-model.number="pagesLimit"
+                  @input="clearFieldError('default_pages_limit')"
+                  min="1"
+                  step="1"
+                  type="number"
+                  required
+                  :disabled="pending !== null"
+                  :aria-invalid="
+                    fieldErrors.default_pages_limit ? true : undefined
+                  "
+                  :aria-describedby="
+                    fieldErrors.default_pages_limit
+                      ? 'pages-limit-error'
+                      : undefined
+                  "
+                /><span
+                  v-if="fieldErrors.default_pages_limit"
+                  id="pages-limit-error"
+                  class="error-text"
+                  role="alert"
+                  >{{ fieldErrors.default_pages_limit }}</span
+                ><span class="field-hint"
+                  >Больше страниц — больше вакансий и дольше ожидание.</span
+                ></label
+              ><UiAlert
+                v-if="feedback"
+                :tone="actionError ? 'error' : 'success'"
+                >{{ feedback }}</UiAlert
+              >
+              <div class="form-actions">
+                <UiButton
+                  type="submit"
+                  :disabled="pending !== null"
+                  :busy="pending === 'save'"
+                  >{{
+                    pending === "save" ? "Сохраняем…" : "Сохранить настройки"
+                  }}</UiButton
+                >
+              </div>
+            </form>
+          </section>
+          <section
+            v-if="user.new_matches_count !== null"
+            class="account-row matches-block"
+            aria-labelledby="matches-heading"
+          >
+            <div class="row-heading">
+              <h2 id="matches-heading">Совпадения</h2>
+              <p>Новые вакансии по вашим сохранённым поискам.</p>
+            </div>
+            <div class="matches">
               <h2>
                 Новых совпадений<span class="matches-count">{{
                   user.new_matches_count
@@ -130,29 +175,42 @@
                 >Отметить прочитанными</UiButton
               >
             </div>
+          </section>
+          <section
+            class="account-row session-block"
+            aria-labelledby="session-heading"
+          >
+            <div class="row-heading">
+              <h2 id="session-heading">Сессия и безопасность</h2>
+              <p>Управление входом на этом устройстве.</p>
+            </div>
             <div class="session">
-              <h2>Сеанс работы</h2>
+              <h3>Текущий сеанс</h3>
               <p class="field-hint">
                 Завершите текущий сеанс на этом устройстве.
               </p>
               <UiButton
-                variant="ghost"
+                variant="secondary"
                 :disabled="pending !== null"
                 @click="signOut"
-                >Выйти из кабинета</UiButton
+                ><UiIcon name="logout" />Выйти из кабинета</UiButton
               >
             </div>
-          </aside>
+          </section>
         </div>
       </template>
     </AsyncState>
   </section>
 </template>
 <script setup lang="ts">
+import { computed } from "vue";
 import { RouterLink } from "vue-router";
 import AsyncState from "../components/AsyncState.vue";
 import UiAlert from "../components/ui/UiAlert.vue";
 import UiButton from "../components/ui/UiButton.vue";
+import UiBadge from "../components/ui/UiBadge.vue";
+import UiIcon from "../components/ui/UiIcon.vue";
+import UiSkeleton from "../components/ui/UiSkeleton.vue";
 import { useAccount } from "../composables/useAccount";
 const {
   user,
@@ -171,26 +229,32 @@ const {
   signOut,
   clearFieldError,
 } = useAccount();
+const accessExpiry = computed(() => {
+  const date = user.value?.access_expires_at
+    ? new Date(user.value.access_expires_at)
+    : null;
+  return date && Number.isFinite(date.getTime()) ? date : null;
+});
+const accessExpired = computed(
+  () =>
+    accessExpiry.value !== null && accessExpiry.value.getTime() <= Date.now(),
+);
+const expiryLabel = computed(() =>
+  !accessExpiry.value
+    ? "Срок доступа не указан"
+    : `${accessExpired.value ? "Срок доступа истёк" : "Доступ действует до"} ${accessExpiry.value.toLocaleString("ru-RU", { day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" })}`,
+);
 </script>
 <style scoped>
-.profile-grid {
-  display: grid;
-  gap: 20px;
-  grid-template-columns: 1fr 1fr;
-  margin-bottom: 28px;
-}
 .profile {
   align-items: center;
   display: flex;
+  flex-wrap: wrap;
   gap: 16px;
-  padding: 24px;
-}
-.profile h2 {
-  margin: 4px 0 8px;
 }
 .avatar {
   align-items: center;
-  background: #e9edfa;
+  background: var(--color-accent-soft);
   border-radius: 50%;
   color: var(--color-link);
   display: flex;
@@ -202,9 +266,6 @@ const {
   width: 56px;
 }
 
-.connection {
-  padding: 24px;
-}
 .connection-heading {
   align-items: center;
   display: flex;
@@ -215,17 +276,6 @@ const {
 }
 .connection-heading h2 {
   margin: 0;
-}
-.connection-status {
-  background: var(--color-warning-bg);
-  border-radius: 6px;
-  color: var(--color-warning);
-  font-size: 12px;
-  padding: 4px 8px;
-}
-.connected {
-  background: var(--color-success-bg);
-  color: var(--color-success);
 }
 .connection p {
   color: var(--color-muted);
@@ -240,27 +290,13 @@ const {
   min-height: 44px;
   text-decoration: none;
 }
-.account-workspace {
-  align-items: start;
-  display: grid;
-  gap: 28px;
-  grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
-}
 .settings-form {
   display: grid;
   gap: 20px;
-  padding: 24px;
-}
-.settings-form p.muted {
-  font-size: 14px;
-  margin: 0;
 }
 .form-actions {
   border-top: 1px solid var(--color-border);
   padding-top: 20px;
-}
-.matches {
-  padding: 24px;
 }
 .matches h2 {
   align-items: center;
@@ -275,27 +311,128 @@ const {
 .matches p {
   font-size: 14px;
 }
-.session {
-  padding: 24px;
+.session button {
+  margin-top: 16px;
 }
-.session h2 {
-  font-size: 15px;
+.account-row {
+  display: grid;
+  align-content: start;
+  gap: 24px;
+  padding: 28px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-panel);
+}
+.account-sheet {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr);
+  grid-template-areas: "profile integration" "settings integration" "settings matches" "session session";
+  gap: 20px;
+}
+.profile-block {
+  grid-area: profile;
+  gap: 16px;
+}
+.settings-block {
+  grid-area: settings;
+  align-self: start;
+}
+.integration-block {
+  grid-area: integration;
+}
+.matches-block {
+  grid-area: matches;
+  gap: 16px;
+}
+.session-block {
+  grid-area: session;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: transparent;
+  box-shadow: none;
+}
+.session {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 24px;
+}
+.session h3 {
+  display: none;
 }
 .session button {
-  margin: 8px 0 0 -16px;
+  margin: 0;
 }
-@media (max-width: 700px) {
-  .profile-grid,
-  .account-workspace {
-    grid-template-columns: 1fr;
+.session > p {
+  max-width: 30ch;
+}
+.matches-block .row-heading p {
+  display: none;
+}
+.matches h2 {
+  font-size: 15px;
+  color: var(--color-muted);
+  font-weight: 500;
+}
+.matches-count {
+  color: var(--color-link);
+  font-size: 28px;
+  font-weight: 700;
+}
+.row-heading p {
+  color: var(--color-muted);
+  font-size: 14px;
+  margin: 0;
+  max-width: 62ch;
+}
+.profile,
+.connection,
+.settings-form,
+.matches,
+.session {
+  padding: 0;
+  min-width: 0;
+}
+.profile-name {
+  color: var(--color-ink);
+  font-size: 22px;
+  font-weight: 700;
+  margin: 0 0 4px;
+  overflow-wrap: anywhere;
+}
+.profile > div {
+  min-width: 0;
+}
+.profile > div:last-child {
+  flex: 1 1 160px;
+}
+.expiry {
+  font-weight: 600;
+  color: var(--color-ink) !important;
+  margin-top: 16px;
+}
+@media (max-width: 900px) {
+  .account-sheet {
+    display: flex;
+    flex-direction: column;
     gap: 16px;
   }
-  .profile,
-  .connection,
-  .settings-form,
-  .matches {
-    padding: 20px;
+  .profile-block,
+  .session-block {
+    display: grid;
   }
+  .account-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 20px;
+    padding: 24px 20px;
+  }
+  .row-heading p {
+    max-width: none;
+  }
+}
+@media (max-width: 700px) {
   .form-actions button {
     width: 100%;
   }
