@@ -1,4 +1,5 @@
 import builtins
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any
@@ -50,6 +51,16 @@ def _values_differ(current: Any, new: Any) -> bool:
             return True
         return _to_utc(current) != _to_utc(new)
     return current != new
+
+
+@dataclass(frozen=True)
+class VacancyStatistics:
+    """Агрегированные показатели по всем сохранённым вакансиям."""
+
+    total_vacancies: int
+    salary_sample_size: int
+    average_salary: float | None
+    top_areas: builtins.list[tuple[str, int]]
 
 
 class VacancyRepository:
@@ -175,6 +186,43 @@ class VacancyRepository:
         )
 
         return list(page), total or 0
+
+    async def get_statistics(self) -> VacancyStatistics:
+        """Считает статистику по всем вакансиям средствами базы данных."""
+        total = await self._session.scalar(select(func.count()).select_from(Vacancy))
+
+        midpoint = (Vacancy.salary_from + Vacancy.salary_to) / 2
+        salary_row = (
+            await self._session.execute(
+                select(func.count(), func.avg(midpoint)).where(
+                    Vacancy.salary_currency == "RUR",
+                    Vacancy.salary_from.is_not(None),
+                    Vacancy.salary_to.is_not(None),
+                    Vacancy.salary_from >= 0,
+                    Vacancy.salary_to >= 0,
+                    Vacancy.salary_from <= Vacancy.salary_to,
+                )
+            )
+        ).one()
+        sample_size, average = salary_row
+
+        area = func.trim(Vacancy.area_name)
+        area_count = func.count()
+        area_rows = await self._session.execute(
+            select(area, area_count)
+            .where(Vacancy.area_name.is_not(None), area != "")
+            .group_by(area)
+            .order_by(area_count.desc(), area.asc())
+            .limit(5)
+        )
+        top_areas = [(name, count) for name, count in area_rows]
+
+        return VacancyStatistics(
+            total_vacancies=total or 0,
+            salary_sample_size=sample_size,
+            average_salary=None if average is None else round(float(average), 2),
+            top_areas=top_areas,
+        )
 
     def _filters(self, query: VacancyListQuery) -> builtins.list[ColumnElement[bool]]:
         """Собирает условия выборки из заданных фильтров."""

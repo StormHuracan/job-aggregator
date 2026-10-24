@@ -320,3 +320,38 @@ async def test_invalid_query_returns_422(
     response = await api_client.get(ENDPOINT, params=params)
 
     assert response.status_code == 422
+
+
+STATS_ENDPOINT = "/vacancies/stats"
+
+
+async def test_stats_without_session_returns_401(api_client: AsyncClient) -> None:
+    response = await api_client.get(STATS_ENDPOINT)
+
+    assert response.status_code == 401
+
+
+async def test_stats_returns_contract_fields(
+    api_client: AsyncClient,
+    sqlite_session: AsyncSession,
+) -> None:
+    await _save(
+        sqlite_session,
+        external_id="1",
+        area_name="Moscow",
+        salary_from=100_000,
+        salary_to=200_000,
+        salary_currency="RUR",
+    )
+    await _authorize(sqlite_session, api_client)
+
+    response = await api_client.get(STATS_ENDPOINT)
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "total_vacancies": 1,
+        "salary_currency": "RUR",
+        "salary_sample_size": 1,
+        "average_salary": 150000,
+        "top_areas": [{"area_name": "Moscow", "vacancies_count": 1}],
+    }
