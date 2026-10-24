@@ -142,6 +142,10 @@ class VacancyRepository:
                 return VacancyUpsertResult.UPDATED
             return VacancyUpsertResult.UNCHANGED
 
+    async def get_by_external_id(self, source: str, external_id: str) -> Vacancy | None:
+        """Найти вакансию по точной паре без управления транзакцией."""
+        return await self._get(source, external_id)
+
     async def _get(self, source: str, external_id: str) -> Vacancy | None:
         return await self._session.scalar(
             select(Vacancy).where(

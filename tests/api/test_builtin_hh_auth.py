@@ -92,7 +92,7 @@ async def test_builtin_completion_creates_session(
     profile = await async_client.get("/me")
     assert profile.status_code == 200
     assert profile.json()["display_name"] == "Иван"
-    assert profile.json()["new_matches_count"] is None
+    assert profile.json()["new_matches_count"] == 0
     assert "private-" not in profile.text
     async_client.cookies.set("hh_oauth_state", state)
     assert (

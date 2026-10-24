@@ -1,3 +1,4 @@
+import asyncio
 import logging
 
 import pytest
@@ -55,6 +56,42 @@ async def test_authentication_error_is_not_retried() -> None:
 
     assert operation.calls == 1
     assert sleep.delays == []
+
+
+async def test_cancellation_during_operation_is_not_retried() -> None:
+    calls = 0
+    sleep = RecordingSleep()
+
+    async def operation() -> str:
+        nonlocal calls
+        calls += 1
+        raise asyncio.CancelledError
+
+    with pytest.raises(asyncio.CancelledError):
+        await retry_hh_request(operation, sleep=sleep)
+
+    assert calls == 1
+    assert sleep.delays == []
+
+
+async def test_cancellation_during_backoff_is_not_retried() -> None:
+    calls = 0
+    delays: list[float] = []
+
+    async def operation() -> str:
+        nonlocal calls
+        calls += 1
+        raise HHTemporaryError("temporary error")
+
+    async def cancel_sleep(seconds: float) -> None:
+        delays.append(seconds)
+        raise asyncio.CancelledError
+
+    with pytest.raises(asyncio.CancelledError):
+        await retry_hh_request(operation, sleep=cancel_sleep)
+
+    assert calls == 1
+    assert delays == [0.5]
 
 
 async def test_rate_limit_is_retried_until_attempts_exhausted() -> None:
