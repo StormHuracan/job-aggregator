@@ -8,8 +8,8 @@
   --color-link: #2855d9;
   --color-link-hover: #1e43b1;
   --color-accent-soft: #edf2ff;
-  --focus-field-halo: 0 0 0 3px rgb(40 85 217 / 22%);
-  --focus-error-halo: 0 0 0 3px rgb(181 44 57 / 10%);
+  --focus-field-halo: 0 0 0 2px rgb(40 85 217 / 12%);
+  --focus-error-halo: 0 0 0 2px rgb(181 44 57 / 12%);
   --color-border: #dfe3ec;
   --color-control-border: #8590a2;
   --color-navy: #202632;

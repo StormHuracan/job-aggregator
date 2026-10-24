@@ -109,18 +109,26 @@ input:disabled {
 input[aria-invalid="true"] {
   border-color: var(--color-danger);
 }
-:where(a, button, input, select, summary):focus-visible {
+:where(a, button, input[type="checkbox"], summary):focus-visible {
   outline: 3px solid var(--color-link);
   outline-offset: 3px;
 }
 input:not([type="checkbox"]):focus,
 select:focus {
+  outline: none;
   border-color: var(--color-link);
   box-shadow: var(--focus-field-halo);
 }
 input:not([type="checkbox"])[aria-invalid="true"]:focus {
   border-color: var(--color-danger);
   box-shadow: var(--focus-error-halo);
+}
+@media (forced-colors: active) {
+  input:not([type="checkbox"]):focus,
+  select:focus {
+    outline: 2px solid Highlight;
+    outline-offset: 2px;
+  }
 }
 h1,
 h2,
