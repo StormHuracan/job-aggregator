@@ -12,7 +12,7 @@
         :aria-busy="pendingIds.includes(search.id)"
       >
         <div class="criteria">
-          <strong>{{ search.name }}</strong>
+          <h3>{{ search.name }}</h3>
           <p>
             {{ search.text
             }}<span v-if="search.area"> · {{ search.area }}</span>
@@ -35,25 +35,47 @@
             {{ toggleErrors[search.id] }}
           </p>
         </div>
-        <label class="switch">
-          <input
-            :checked="search.is_enabled"
+        <div class="search-actions">
+          <UiButton
+            variant="ghost"
             :disabled="pendingIds.includes(search.id)"
-            type="checkbox"
-            :aria-label="'Поиск «' + search.name + '»: включён'"
-            :aria-describedby="
+            :aria-label="`Удалить поиск «${search.name}»`"
+            @click="emit('delete', search)"
+            >Удалить</UiButton
+          >
+          <UiSwitch
+            :model-value="search.is_enabled"
+            :label="`Активность поиска «${search.name}»`"
+            :disabled="pendingIds.includes(search.id)"
+            :described-by="
               toggleErrors[search.id] ? 'toggle-error-' + search.id : undefined
             "
-            @change="toggle($event, search)"
-          />
-          <span>{{
-            pendingIds.includes(search.id)
-              ? "Сохраняем…"
-              : search.is_enabled
-                ? "Включён"
-                : "Выключен"
-          }}</span>
-        </label>
+            @update:model-value="emit('toggle', search.id, $event)"
+          >
+            {{
+              pendingIds.includes(search.id)
+                ? "Сохраняем…"
+                : search.is_enabled
+                  ? "Включён"
+                  : "Выключен"
+            }}
+          </UiSwitch>
+          <RouterLink
+            class="results-link"
+            :to="{
+              path: '/vacancies',
+              query: {
+                text: search.text,
+                area: search.area || undefined,
+                salary_from: search.min_salary ?? undefined,
+                salary_to: search.max_salary ?? undefined,
+                limit: 20,
+                offset: 0,
+              },
+            }"
+            >Показать вакансии <UiIcon name="chevron-right" :size="16"
+          /></RouterLink>
+        </div>
       </li>
     </ul>
   </section>
@@ -61,6 +83,10 @@
 
 <script setup lang="ts">
 import EmptyState from "./ui/EmptyState.vue";
+import UiSwitch from "./ui/UiSwitch.vue";
+import UiButton from "./ui/UiButton.vue";
+import UiIcon from "./ui/UiIcon.vue";
+import { RouterLink } from "vue-router";
 import type { SavedSearch } from "../api/saved-searches";
 withDefaults(
   defineProps<{
@@ -70,13 +96,11 @@ withDefaults(
   }>(),
   { pendingIds: () => [], toggleErrors: () => ({}) },
 );
-const emit = defineEmits<{ toggle: [id: number, enabled: boolean] }>();
+const emit = defineEmits<{
+  toggle: [id: number, enabled: boolean];
+  delete: [search: SavedSearch];
+}>();
 const format = (value: number) => new Intl.NumberFormat("ru-RU").format(value);
-function toggle(event: Event, search: SavedSearch): void {
-  // До ответа сервера сохраняем прежнее состояние checkbox, в том числе при ошибке.
-  (event.target as HTMLInputElement).checked = search.is_enabled;
-  emit("toggle", search.id, !search.is_enabled);
-}
 </script>
 
 <style scoped>
@@ -91,7 +115,7 @@ li {
   display: flex;
   gap: var(--space-4);
   justify-content: space-between;
-  padding: 20px 24px;
+  padding: 16px 22px;
 }
 li:last-child {
   border-bottom: 0;
@@ -100,8 +124,8 @@ li:last-child {
   min-width: 0;
   overflow-wrap: anywhere;
 }
-strong {
-  font-size: 16px;
+h3 {
+  font-size: 18px;
   color: var(--color-ink);
 }
 p {
@@ -109,54 +133,40 @@ p {
   color: var(--color-muted);
   margin: var(--space-1) 0 0;
 }
-.switch {
-  align-items: center;
-  display: inline-flex;
-  flex: none;
-  gap: var(--space-2);
-  white-space: nowrap;
-}
-.switch input {
-  appearance: none;
-  background: #a2aab7;
-  border: 0;
-  border-radius: 20px;
-  cursor: pointer;
-  height: 24px;
-  min-height: 24px;
-  padding: 3px;
-  position: relative;
-  width: 40px;
-}
-.switch input::before {
-  background: white;
-  border-radius: 50%;
-  content: "";
-  display: block;
-  height: 18px;
-  width: 18px;
-}
-.switch input:checked {
-  background: var(--color-link);
-}
-.switch input:checked::before {
-  transform: translateX(16px);
-}
-.switch {
-  min-height: 44px;
-  font-size: 13px;
-  font-weight: 500;
-}
-.switch input:disabled {
-  opacity: 0.6;
-  cursor: wait;
-}
 .empty-state {
   color: var(--color-muted);
   margin: var(--space-4) 0;
 }
 .error {
   color: var(--color-danger);
+}
+.search-actions {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: 24px;
+}
+.results-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  gap: 4px;
+  font-size: 14px;
+  font-weight: 600;
+}
+@media (max-width: 640px) {
+  li {
+    padding: 16px;
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .search-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+  }
 }
 @media (max-width: 28rem) {
   li {
