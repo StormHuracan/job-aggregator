@@ -5,6 +5,7 @@ withDefaults(defineProps<{ name: keyof typeof paths; size?: number }>(), {
 const paths = {
   search: "M21 21l-5-5 M18 10.5a7.5 7.5 0 1 1-15 0 7.5 7.5 0 0 1 15 0",
   refresh: "M20 7v5h-5 M4 17v-5h5 M6 6a8 8 0 0 1 13 2 M18 18a8 8 0 0 1-13-2",
+  download: "M12 3v12m-5-5 5 5 5-5M4 16v4a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-4",
   bookmark: "M6 3h12v18l-6-4-6 4Z",
   plus: "M12 5v14 M5 12h14",
   close: "M6 6l12 12 M6 18 18 6",

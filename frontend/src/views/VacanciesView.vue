@@ -142,7 +142,7 @@
         @click="showCollection = !showCollection"
       >
         {{ collectionRunning ? "Загрузка с HH.ru…" : "Загрузить с HH.ru" }}
-        <UiIcon name="refresh" />
+        <UiIcon name="download" :size="18" />
       </button>
     </div>
     <div
