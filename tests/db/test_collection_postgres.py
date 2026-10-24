@@ -69,12 +69,6 @@ async def test_collect_pages_postgres_transaction_boundaries(
     item2 = make_vacancy_data(external_id="2", title="New Vacancy")
 
     # 2. Симулируем ошибку данных (VacancySaveError)
-    # Передадим невалидные данные, которые репозиторий отклонит.
-    # В зависимости от логики репозитория, это может быть пустое поле или None там, где нужен str.
-    # Если make_vacancy_data не дает сделать "битую" запись, используем мок или создадим вручную.
-    # Для надежности используем MagicMock с нужными полями, но проще всего
-    # передать пустой external_id, если репозиторий его валидирует.
-    # Если нет — просто пропустим этот шаг и сделаем тест на успех и роллбэк.
     bad_item = make_vacancy_data(external_id="bad", title="Bad Item")
 
     client = FakeHHClient(
@@ -93,7 +87,7 @@ async def test_collect_pages_postgres_transaction_boundaries(
         repo = VacancyRepository(session)
         service = VacancyCollectionService(client, repo)
 
-        result = await service.collect_pages(params, pages_limit=2)
+        await service.collect_pages(params, pages_limit=2)
 
         # Если bad_item прошел валидацию в репозитории, результат будет:
         # created=2 (item1, item2), updated=1 (item1_v2), failed=0
@@ -112,7 +106,7 @@ async def test_collect_pages_postgres_transaction_boundaries(
         repo = VacancyRepository(session)
         service = VacancyCollectionService(client, repo)
 
-        result = await service.collect_pages(params, pages_limit=2)
+        await service.collect_pages(params, pages_limit=2)
         await session.commit()
 
     async with pg_session_factory() as session:
