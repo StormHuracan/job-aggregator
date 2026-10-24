@@ -1,4 +1,5 @@
 import logging
+from collections.abc import Awaitable, Callable
 
 from job_aggregator.db.repositories.vacancy import (
     VacancyRepository,
@@ -11,6 +12,7 @@ from job_aggregator.schemas.collection import (
     CollectionRunProgressResponse,
     CollectionRunResponse,
 )
+from job_aggregator.schemas.vacancy import VacancyData
 
 logger = logging.getLogger(__name__)
 
@@ -18,9 +20,19 @@ logger = logging.getLogger(__name__)
 class VacancyCollectionService:
     """Сбор вакансий с частичным успехом при ошибках данных."""
 
-    def __init__(self, client: HHClient, repository: VacancyRepository) -> None:
+    def __init__(
+        self,
+        client: HHClient,
+        repository: VacancyRepository,
+        on_saved: Callable[
+            [VacancyData, VacancyUpsertResult],
+            Awaitable[None],
+        ]
+        | None = None,
+    ) -> None:
         self._client = client
         self._repository = repository
+        self._on_saved = on_saved
 
     async def collect(self, params: HHVacancySearchParams) -> CollectionRunResponse:
         """Собирает ровно одну страницу. Оставлен для обратной совместимости."""
@@ -110,6 +122,9 @@ class VacancyCollectionService:
                 logger.warning("Vacancy data rejected during collection")
                 result.failed += 1
                 continue
+
+            if self._on_saved is not None:
+                await self._on_saved(vacancy, outcome)
 
             match outcome:
                 case VacancyUpsertResult.CREATED:

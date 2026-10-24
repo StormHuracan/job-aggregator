@@ -1,8 +1,14 @@
+from collections.abc import Awaitable, Callable
+
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from job_aggregator.core.config import Settings
-from job_aggregator.db.repositories.vacancy import VacancyRepository
+from job_aggregator.db.repositories.vacancy import (
+    VacancyRepository,
+    VacancyUpsertResult,
+)
 from job_aggregator.integrations.hh.client import HHClient
+from job_aggregator.schemas.vacancy import VacancyData
 from job_aggregator.services.collection import VacancyCollectionService
 from job_aggregator.services.hh_requests import AuthorizedHHAPIClient
 
@@ -12,6 +18,8 @@ def build_collection_service(
     session: AsyncSession,
     session_factory: async_sessionmaker[AsyncSession],
     settings: Settings,
+    on_saved: Callable[[VacancyData, VacancyUpsertResult], Awaitable[None]]
+    | None = None,
 ) -> VacancyCollectionService:
     vacancy_repository = VacancyRepository(session=session)
 
@@ -25,4 +33,8 @@ def build_collection_service(
 
     client = HHClient(authorized_client)
 
-    return VacancyCollectionService(client=client, repository=vacancy_repository)
+    if on_saved is None:
+        return VacancyCollectionService(client=client, repository=vacancy_repository)
+    return VacancyCollectionService(
+        client=client, repository=vacancy_repository, on_saved=on_saved
+    )
