@@ -1,96 +1,584 @@
 <template>
-  <section class="vacancies-page">
+  <section v-if="!sessionExpired" aria-labelledby="vacancies-heading">
     <div class="page-heading">
       <div>
-        <h1>Вакансии</h1>
-        <p class="page-intro">Соберите подходящие роли в одном месте и возвращайтесь к поиску в удобном темпе.</p>
+        <h1 id="vacancies-heading">Работа для разработчиков</h1>
+        <p>
+          Ищите вакансии для разработчиков по технологиям, компании и городу.
+        </p>
       </div>
-      <button class="collection-action" :disabled="collectionRunning" type="button" @click="runCollection">{{ collectionRunning ? "Обновляем витрину…" : "Обновить вакансии" }}</button>
     </div>
-    <p v-if="collectionMessage" class="collection-status" role="status">{{ collectionMessage }}</p>
-    <form class="filters" @submit.prevent="applyFilters">
-      <div class="filters-heading"><h2>Начните с запроса</h2><p>Параметры сохраняются в ссылке.</p></div>
-      <label class="query-field">Текст <input v-model="text" placeholder="Например, Python developer" /></label>
-      <button class="search-submit" type="submit">Найти вакансии</button>
-      <details class="advanced-filters">
-        <summary>Дополнительные параметры</summary>
-        <div class="advanced-fields">
-          <label>Компания <input v-model="company" /></label>
-          <label>Город <input v-model="area" /></label>
-          <label>Зарплата от <input v-model.number="salaryFrom" min="0" type="number" /></label>
-          <label>Зарплата до <input v-model.number="salaryTo" min="0" type="number" /></label>
-        </div>
-      </details>
+    <form class="filters panel" @submit.prevent="applyFilters">
+      <div class="search-row">
+        <label class="field query-field" for="vacancy-query"
+          >Должность или технология<input
+            id="vacancy-query"
+            v-model="text"
+            type="search"
+            placeholder="Например, Python developer" /></label
+        ><UiButton type="submit" :disabled="loading">Найти вакансии</UiButton>
+      </div>
+      <div class="filter-toolbar">
+        <details
+          ref="filterDetails"
+          class="advanced-filters"
+          :open="hasAdvanced"
+        >
+          <summary>
+            Фильтры<span v-if="filterCount" class="filter-count">{{
+              filterCount
+            }}</span>
+          </summary>
+          <div class="advanced-fields">
+            <label class="field"
+              >Компания<input v-model="company" placeholder="Название компании"
+            /></label>
+            <label class="field"
+              >Город<input v-model="area" placeholder="Например, Москва"
+            /></label>
+            <label class="field"
+              >Зарплата от<input
+                v-model="salaryFrom"
+                type="number"
+                min="0"
+                step="1"
+                inputmode="numeric"
+                placeholder="Не указана"
+            /></label>
+            <label class="field"
+              >Зарплата до<input
+                v-model="salaryTo"
+                type="number"
+                min="0"
+                step="1"
+                inputmode="numeric"
+                placeholder="Не указана"
+                ref="salaryToInput"
+                :aria-invalid="salaryError ? true : undefined"
+                :aria-describedby="salaryError ? 'salary-error' : undefined"
+              /><span
+                v-if="salaryError"
+                id="salary-error"
+                class="error-text"
+                role="alert"
+                >{{ salaryError }}</span
+              ></label
+            >
+          </div>
+        </details>
+        <UiButton
+          v-if="hasFilters"
+          variant="ghost"
+          class="reset-filters"
+          @click="resetFilters"
+          >Сбросить</UiButton
+        >
+      </div>
     </form>
-    <div class="results-heading"><h2>Результаты</h2><p>{{ filteredVacancies.length }} в текущей выдаче</p></div>
-    <div class="vacancy-list"><VacancyCard v-for="vacancy in filteredVacancies" :key="vacancy.id" :vacancy="vacancy" /></div>
-    <p v-if="filteredVacancies.length === 0" class="empty-result">Вакансии не найдены. Измените параметры поиска.</p>
-    <nav aria-label="Пагинация" class="pagination"><button :disabled="offset === 0" type="button" @click="changePage(-1)">Предыдущая</button><button :disabled="filteredVacancies.length < limit" type="button" @click="changePage(1)">Следующая</button></nav>
+    <div class="source-toolbar">
+      <p>Поиск по вакансиям в списке</p>
+      <button
+        class="source-toggle"
+        :aria-expanded="showCollection"
+        aria-controls="collection-panel"
+        @click="showCollection = !showCollection"
+      >
+        Получить свежие с HH.ru <span aria-hidden="true">↗</span>
+      </button>
+    </div>
+    <div
+      v-if="showCollection"
+      id="collection-panel"
+      class="collection-panel panel"
+    >
+      <h2>Получить вакансии с HH.ru</h2>
+      <p class="muted">
+        Найдём вакансии по вашему запросу и добавим их в список.
+        При повторном поиске продолжим с того места, где остановились.
+        Для этого войдите через HH.ru.
+      </p>
+      <form ref="collectionForm" class="collection-form" @submit.prevent="collect()">
+        <div class="collection-fields">
+          <div class="field collection-query">
+            <label for="collection-query">Должность или технология</label>
+            <input id="collection-query" v-model.trim="collectionText" required
+              maxlength="255" placeholder="Например, Python developer"
+              :disabled="collectionRunning" />
+          </div>
+          <RegionPicker v-model="collectionArea" :disabled="collectionRunning"
+            @unauthorized="expireAreaSession" />
+          <div class="field">
+            <label for="collection-pages">Страниц за поиск</label>
+            <input id="collection-pages" v-model.number="collectionPages" type="number"
+              min="1" step="1" required :disabled="collectionRunning"
+              aria-describedby="collection-pages-hint" />
+            <span id="collection-pages-hint" class="field-hint">До 20 вакансий на странице.</span>
+          </div>
+        </div>
+        <div class="collection-actions">
+          <UiButton
+            type="submit"
+            :busy="collectionRunning"
+            :disabled="collectionRunning || collectionAtEnd"
+          >{{
+              collectionRunning
+                ? "Получаем…"
+                : hasCollectionProgress
+                  ? "Продолжить поиск"
+                  : "Получить вакансии"
+            }}</UiButton>
+          <UiButton
+            variant="secondary"
+            :disabled="collectionRunning"
+            @click="collect(true)"
+          >Проверить новые вакансии</UiButton>
+        </div>
+      </form>
+      <p class="field-hint">
+        «Проверить новые вакансии» начнёт поиск сначала и обновит уже найденные.
+      </p>
+      <p v-if="collectionAtEnd" role="status">
+        Все доступные вакансии по этому запросу просмотрены. Проверьте новые
+        вакансии позже или измените запрос.
+      </p>
+    </div>
+    <UiAlert
+      v-if="collectionMessage"
+      :tone="collectionError ? 'error' : 'success'"
+      >{{ collectionMessage }}</UiAlert
+    >
+    <div class="section-heading">
+      <h2>
+        Вакансии
+        <span v-if="result && !loading && !loadError" class="result-count">{{
+          result.total.toLocaleString("ru-RU")
+        }}</span>
+      </h2>
+      <p>Сначала новые</p>
+    </div>
+    <AsyncState
+      :loading="loading"
+      :error="loadError"
+      ><template #error-actions
+        ><UiButton variant="secondary" @click="load"
+          >Повторить загрузку</UiButton
+        ></template
+      >
+      <div class="panel vacancy-list">
+        <VacancyCard
+          v-for="vacancy in result?.items"
+          :key="vacancy.id"
+          :vacancy="vacancy"
+        /><EmptyState
+          v-if="!result?.items.length"
+          :title="
+            offset > 0 ? 'На этой странице вакансий нет' : 'Вакансии не найдены'
+          "
+          :description="
+            offset > 0
+              ? 'Вернитесь на первую страницу, чтобы увидеть актуальные результаты.'
+              : 'Попробуйте другой запрос или уберите часть фильтров.'
+          "
+          ><UiButton
+            v-if="offset > 0"
+            variant="secondary"
+            @click="router.push({ query: { ...route.query, offset: 0 } })"
+            >На первую страницу</UiButton
+          ><UiButton
+            v-else-if="hasFilters"
+            variant="secondary"
+            @click="resetFilters"
+            >Сбросить фильтры</UiButton
+          ></EmptyState
+        >
+      </div>
+      <nav
+        v-if="result && result.items.length > 0"
+        aria-label="Страницы вакансий"
+        class="pagination"
+      >
+        <p>
+          {{ offset + 1 }}–{{
+            Math.min(offset + result.items.length, result.total)
+          }}
+          из {{ result.total }}
+        </p>
+        <div>
+          <UiButton
+            variant="secondary"
+            :disabled="offset === 0"
+            @click="changePage(-1)"
+            >Назад</UiButton
+          ><UiButton
+            variant="secondary"
+            :disabled="offset + limit >= result.total"
+            @click="changePage(1)"
+            >Далее</UiButton
+          >
+        </div>
+      </nav>
+    </AsyncState>
   </section>
 </template>
-
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, onScopeDispose, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import type { VacancyResponse } from "../api/vacancies";
+import { ApiError } from "../api/client";
+import { listVacancies, type VacancyListResponse } from "../api/vacancies";
+import { runCollection } from "../api/collection";
+import type { HHAreaSuggestion } from "../api/hh-areas";
+import RegionPicker from "../components/RegionPicker.vue";
+import AsyncState from "../components/AsyncState.vue";
 import VacancyCard from "../components/VacancyCard.vue";
-
-const vacancies: VacancyResponse[] = [{ id: 1, source: "hh", external_id: "demo-1", published_at: null, created_at: "2026-10-19T12:00:00Z", updated_at: "2026-10-19T12:00:00Z", title: "Python developer", company_name: "Демо-компания", area_name: "Москва", salary_from: 180000, salary_to: null, salary_currency: "RUR", description: "Тестовая вакансия. Данные будут заменены публичным API.", source_url: "https://hh.ru" }];
+import EmptyState from "../components/ui/EmptyState.vue";
+import UiButton from "../components/ui/UiButton.vue";
+import UiAlert from "../components/ui/UiAlert.vue";
 const route = useRoute();
 const router = useRouter();
-const text = ref(String(route.query.text ?? ""));
-const company = ref(String(route.query.company ?? ""));
-const area = ref(String(route.query.area ?? ""));
-const salaryFrom = ref(Number(route.query.salary_from) || undefined);
-const salaryTo = ref(Number(route.query.salary_to) || undefined);
-const limit = Number(route.query.limit) || 20;
-const offset = computed(() => Number(route.query.offset) || 0);
-const collectionRunning = ref(false);
-const collectionMessage = ref("");
-const filteredVacancies = computed(() => vacancies.filter((vacancy) => {
-  const matchesText = [vacancy.title, vacancy.company_name, vacancy.area_name].filter(Boolean).join(" ").toLowerCase().includes(`${text.value} ${company.value} ${area.value}`.trim().toLowerCase());
-  const salary = vacancy.salary_from ?? vacancy.salary_to ?? 0;
-  return matchesText && (!salaryFrom.value || salary >= salaryFrom.value) && (!salaryTo.value || salary <= salaryTo.value);
-}).slice(offset.value, offset.value + limit));
-
+const text = ref("");
+const company = ref("");
+const area = ref("");
+const salaryFrom = ref<string | number>("");
+const salaryTo = ref<string | number>("");
+const salaryError = ref("");
+const filterDetails = ref<HTMLDetailsElement>();
+const salaryToInput = ref<HTMLInputElement>();
+const integer = (
+  value: unknown,
+  fallback: number,
+  max = Number.MAX_SAFE_INTEGER,
+) => {
+  const n = Number(value);
+  return Number.isSafeInteger(n) && n >= 0 && n <= max ? n : fallback;
+};
+const limit = computed(() => Math.max(1, integer(route.query.limit, 20, 100)));
+const offset = computed(() => integer(route.query.offset, 0));
+const filterCount = computed(
+  () =>
+    [company.value, area.value, salaryFrom.value, salaryTo.value].filter(
+      (v) => v !== "",
+    ).length,
+);
+const hasAdvanced = computed(() => filterCount.value > 0);
+const hasFilters = computed(() => Boolean(text.value || hasAdvanced.value));
+const loading = ref(false);
+const loadError = ref<string | null>(null);
+const result = ref<VacancyListResponse | null>(null);
+let requestId = 0;
+let active = true;
+const sessionExpired = ref(false);
+onScopeDispose(() => {
+  active = false;
+  requestId++;
+});
+async function message(error: unknown): Promise<string> {
+  if (active && error instanceof ApiError && error.status === 401) {
+    sessionExpired.value = true;
+    result.value = null;
+    await router.replace({
+      path: "/login",
+      query: { redirect: route.fullPath, reason: "session-expired" },
+    });
+  }
+  return error instanceof ApiError
+    ? error.message
+    : "Не удалось загрузить вакансии. Попробуйте ещё раз.";
+}
+async function load(): Promise<void> {
+  const id = ++requestId;
+  loading.value = true;
+  loadError.value = null;
+  result.value = null;
+  try {
+    const data = await listVacancies({
+      text: text.value || undefined,
+      company: company.value || undefined,
+      area: area.value || undefined,
+      salary_from:
+        salaryFrom.value === "" ? undefined : Number(salaryFrom.value),
+      salary_to: salaryTo.value === "" ? undefined : Number(salaryTo.value),
+      limit: limit.value,
+      offset: offset.value,
+    });
+    if (active && !sessionExpired.value && id === requestId)
+      result.value = data;
+  } catch (error) {
+    if (active && id === requestId) loadError.value = await message(error);
+  } finally {
+    if (active && id === requestId) loading.value = false;
+  }
+}
+watch(
+  () => route.fullPath,
+  () => {
+    if (route.path !== "/vacancies" || sessionExpired.value) return;
+    text.value = String(route.query.text ?? "");
+    company.value = String(route.query.company ?? "");
+    area.value = String(route.query.area ?? "");
+    salaryFrom.value =
+      route.query.salary_from === undefined
+        ? ""
+        : String(route.query.salary_from);
+    salaryTo.value =
+      route.query.salary_to === undefined ? "" : String(route.query.salary_to);
+    salaryError.value = "";
+    void load();
+  },
+  { immediate: true },
+);
 async function applyFilters(): Promise<void> {
-  await router.replace({ query: { text: text.value || undefined, company: company.value || undefined, area: area.value || undefined, salary_from: salaryFrom.value, salary_to: salaryTo.value, limit, offset: undefined } });
+  salaryError.value = "";
+  if (
+    salaryFrom.value !== "" &&
+    salaryTo.value !== "" &&
+    Number(salaryFrom.value) > Number(salaryTo.value)
+  ) {
+    salaryError.value = "Максимум не может быть меньше минимума";
+    if (filterDetails.value) filterDetails.value.open = true;
+    salaryToInput.value?.focus();
+    return;
+  }
+  const target = {
+    text: text.value.trim() || undefined,
+    company: company.value.trim() || undefined,
+    area: area.value.trim() || undefined,
+    salary_from: salaryFrom.value === "" ? undefined : salaryFrom.value,
+    salary_to: salaryTo.value === "" ? undefined : salaryTo.value,
+    limit: limit.value,
+  };
+  const before = route.fullPath;
+  await router.push({ query: target });
+  if (before === route.fullPath) await load();
 }
-
+async function resetFilters(): Promise<void> {
+  text.value = "";
+  company.value = "";
+  area.value = "";
+  salaryFrom.value = "";
+  salaryTo.value = "";
+  salaryError.value = "";
+  await applyFilters();
+}
 async function changePage(direction: number): Promise<void> {
-  await router.replace({ query: { ...route.query, offset: Math.max(0, offset.value + direction * limit) } });
+  await router.push({
+    query: {
+      ...route.query,
+      offset: Math.max(0, offset.value + direction * limit.value),
+    },
+  });
 }
-
-async function runCollection(): Promise<void> {
+const showCollection = ref(false);
+const collectionText = ref("");
+const collectionArea = ref<HHAreaSuggestion | null>(null);
+const collectionPages = ref(1);
+const collectionRunning = ref(false);
+const collectionForm = ref<HTMLFormElement>();
+const collectionMessage = ref("");
+const collectionError = ref(false);
+const collectionKey = computed(() =>
+  JSON.stringify([collectionText.value.trim(), collectionArea.value?.id ?? null]),
+);
+const lastCollection = ref<{ key: string; exhausted: boolean } | null>(null);
+const hasCollectionProgress = computed(
+  () => lastCollection.value?.key === collectionKey.value,
+);
+const collectionAtEnd = computed(
+  () => hasCollectionProgress.value && lastCollection.value!.exhausted,
+);
+watch(collectionKey, () => {
+  collectionMessage.value = "";
+});
+async function expireAreaSession(): Promise<void> {
+  await message(new ApiError(401, "Войдите снова, чтобы продолжить."));
+}
+async function collect(restart = false): Promise<void> {
+  if (!collectionForm.value?.reportValidity()) return;
+  if (
+    collectionRunning.value ||
+    sessionExpired.value ||
+    (!restart && collectionAtEnd.value) ||
+    !collectionText.value ||
+    !Number.isSafeInteger(collectionPages.value) ||
+    collectionPages.value < 1
+  )
+    return;
   collectionRunning.value = true;
   collectionMessage.value = "";
-  await Promise.resolve();
-  collectionRunning.value = false;
-  collectionMessage.value = "Сбор вакансий завершён. Данные будут обновлены после подключения API.";
+  collectionError.value = false;
+  const key = collectionKey.value;
+  try {
+    const data = await runCollection({
+      text: collectionText.value,
+      area: collectionArea.value?.id ?? null,
+      pages_limit: collectionPages.value,
+      restart,
+    });
+    if (!active) return;
+    lastCollection.value = { key, exhausted: data.exhausted };
+    collectionMessage.value = `Найдено новых: ${data.created}. Обновлено: ${data.updated}. Уже есть в списке: ${data.skipped}.`;
+    if (data.failed) collectionMessage.value += ` Не удалось загрузить: ${data.failed}. Попробуйте проверить новые вакансии ещё раз.`;
+    await load();
+  } catch (error) {
+    if (!active) return;
+    collectionError.value = true;
+    collectionMessage.value =
+      error instanceof ApiError && error.status === 409
+        ? "Подключите HH.ru повторно, чтобы получить вакансии."
+        : await message(error);
+  } finally {
+    collectionRunning.value = false;
+  }
 }
 </script>
 <style scoped>
-.page-heading { align-items: end; display: flex; gap: var(--space-6); justify-content: space-between; margin-bottom: var(--space-8); }
-.page-heading h1 { margin-bottom: var(--space-3); }
-.page-intro { color: var(--color-muted); margin: 0; max-width: 48ch; }
-.page-heading button { flex: none; }
-.collection-action { background: transparent; border: 1px solid var(--color-link); color: var(--color-link); }
-.collection-action:hover:not(:disabled) { background: #e0f2fe; color: var(--color-link-hover); }
-.collection-status { background: #fff7e5; border: 1px solid #ead6a7; color: #76540f; margin: -1rem 0 var(--space-6); padding: var(--space-3) var(--space-4); }
-.filters { align-items: end; background: var(--color-surface-subtle); border: 1px solid var(--color-border); display: grid; gap: var(--space-4); grid-template-columns: minmax(0, 1fr) auto; margin: 1.5rem 0; padding: var(--space-6); }
-.filters-heading { grid-column: 1 / -1; }
-.filters-heading h2, .results-heading h2 { font-size: 1.1rem; margin: 0; }
-.filters-heading p, .results-heading p { color: var(--color-muted); font-size: 0.9rem; margin: 0.2rem 0 0; }
-.query-field { min-width: 0; }
-.filters label { display: grid; gap: 0.35rem; }
-.search-submit { min-width: 11rem; }
-.advanced-filters { grid-column: 1 / -1; }
-.advanced-filters summary { color: var(--color-link); cursor: pointer; font-weight: 700; width: fit-content; }
-.advanced-filters[open] summary { margin-bottom: var(--space-4); }
-.advanced-fields { display: grid; gap: var(--space-4); grid-template-columns: repeat(4, minmax(0, 1fr)); }
-.results-heading { align-items: baseline; display: flex; justify-content: space-between; margin: var(--space-8) 0 var(--space-2); }
-.vacancy-list { border-bottom: 1px solid var(--color-border); }
-.empty-result { color: var(--color-muted); padding: var(--space-8) 0; }
-.pagination { display: flex; gap: 0.75rem; justify-content: flex-end; margin-top: 1rem; }
-@media (max-width: 42rem) { .page-heading { align-items: start; flex-direction: column; } .filters { grid-template-columns: 1fr; padding: var(--space-4); } .search-submit { width: 100%; } .advanced-fields { grid-template-columns: 1fr; } }
+.filters {
+  padding: 24px;
+}
+.search-row {
+  align-items: end;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+.search-row input {
+  margin-top: 4px;
+}
+.filter-toolbar {
+  position: relative;
+}
+.advanced-filters summary {
+  color: var(--color-muted);
+  font-size: 14px;
+  margin-top: 8px;
+  width: fit-content;
+}
+.filter-count {
+  background: var(--color-surface-subtle);
+  border-radius: 4px;
+  font-size: 12px;
+  margin-left: 8px;
+  padding: 2px 6px;
+}
+.advanced-fields {
+  border-top: 1px solid var(--color-border);
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-top: 8px;
+  padding-top: 20px;
+}
+.reset-filters {
+  position: absolute;
+  right: 0;
+  top: 8px;
+}
+.source-toolbar {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 16px;
+  justify-content: space-between;
+  margin: 4px 0 24px;
+}
+.source-toolbar p {
+  color: var(--color-muted);
+  font-size: 12px;
+  margin: 0;
+}
+.source-toggle {
+  background: transparent;
+  color: var(--color-link);
+  font-size: 13px;
+  padding-inline: 0;
+}
+.source-toggle:hover {
+  background: transparent !important;
+  color: var(--color-link-hover) !important;
+}
+.collection-panel {
+  margin-bottom: 20px;
+  padding: 24px;
+}
+.collection-fields {
+  align-items: start;
+  display: grid;
+  gap: 20px;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1.5fr) minmax(140px, 0.8fr);
+}
+.collection-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-block: 20px 12px;
+}
+.result-count {
+  background: var(--color-surface-subtle);
+  border-radius: 6px;
+  color: var(--color-muted);
+  display: inline-block;
+  font-size: 13px;
+  margin-left: 8px;
+  padding: 3px 8px;
+  vertical-align: middle;
+}
+.vacancy-list {
+  overflow: hidden;
+}
+.pagination {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  margin-top: 24px;
+}
+.pagination p {
+  color: var(--color-muted);
+  font-size: 13px;
+  margin: 0;
+}
+.pagination > div {
+  display: flex;
+  gap: 8px;
+}
+@media (max-width: 900px) {
+  .advanced-fields,
+  .collection-fields {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .collection-query {
+    grid-column: 1 / -1;
+  }
+}
+@media (max-width: 640px) {
+  .filters,
+  .collection-panel {
+    padding: 16px;
+  }
+  .search-row {
+    grid-template-columns: 1fr;
+  }
+  .advanced-fields,
+  .collection-fields {
+    grid-template-columns: 1fr;
+  }
+  .collection-actions > button {
+    width: 100%;
+  }
+  .source-toolbar {
+    margin-bottom: 8px;
+  }
+  .source-toolbar p {
+    display: none;
+  }
+  .section-heading {
+    margin-top: 20px;
+  }
+  .pagination {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .pagination > div > * {
+    flex: 1;
+  }
+}
 </style>

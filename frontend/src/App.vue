@@ -2,7 +2,7 @@
   <div class="app-shell">
     <a class="skip-link" href="#main-content">К содержимому</a>
     <AppNavigation />
-    <main id="main-content" class="app-content">
+    <main id="main-content" class="app-content" tabindex="-1">
       <RouterView />
     </main>
   </div>

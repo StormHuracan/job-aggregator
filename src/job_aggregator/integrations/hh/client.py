@@ -10,6 +10,7 @@ from pydantic import ValidationError
 from requests import PreparedRequest, RequestException, Response, Session
 
 from job_aggregator.integrations.hh.dto import (
+    HHUserProfile,
     HHVacancyPage,
     HHVacancySearchParams,
 )
@@ -18,6 +19,7 @@ from job_aggregator.integrations.hh.errors import (
     classify_error,
 )
 from job_aggregator.integrations.hh.retry import retry_hh_request
+from job_aggregator.schemas.hh_area import HHAreaSuggestion
 from job_aggregator.schemas.hh_token import HHAccountTokenData
 from job_aggregator.schemas.vacancy import VacancyData
 
@@ -136,6 +138,31 @@ class HHAPIClient:
             access_expires_at=datetime.fromtimestamp(expires_at, tz=UTC),
         )
 
+    async def get_current_user(self) -> HHUserProfile:
+        """Получить профиль владельца токена; ошибки HH сохраняют классификацию."""
+        data = await self.request("GET", "/me")
+        if not isinstance(data, dict):
+            raise HHPermanentRequestError("HH invalid profile")
+        identity = data.get("id")
+        if isinstance(identity, bool) or not isinstance(identity, (str, int)):
+            raise HHPermanentRequestError("HH invalid profile")
+        if isinstance(identity, int) and identity <= 0:
+            raise HHPermanentRequestError("HH invalid profile")
+        hh_user_id = str(identity).strip()
+        if not hh_user_id or len(hh_user_id) > 255:
+            raise HHPermanentRequestError("HH invalid profile")
+        parts = []
+        for field in ("first_name", "middle_name", "last_name"):
+            value = data.get(field)
+            if value is not None and not isinstance(value, str):
+                raise HHPermanentRequestError("HH invalid profile")
+            if value and value.strip():
+                parts.append(value.strip())
+        display_name = " ".join(parts) or hh_user_id
+        if len(display_name) > 255:
+            raise HHPermanentRequestError("HH invalid profile")
+        return HHUserProfile(hh_user_id=hh_user_id, display_name=display_name)
+
 
 class HHOAuthClient:
     """Изолированный async-клиент для OAuth-операций HH.ru."""
@@ -149,25 +176,45 @@ class HHOAuthClient:
         self._client_id = client_id
         self._client_secret = client_secret
 
-    def get_authorization_url(self, redirect_uri: str) -> str:
-        client = hh_api.OAuthClient(
-            client_id=self._client_id,
-            client_secret=self._client_secret,
-            redirect_uri=redirect_uri,
-        )
-        return client.authorize_url
+    def get_authorization_url(self, redirect_uri: str, state: str) -> str:
+        with _TimeoutSession() as http_session:
+            client = hh_api.OAuthClient(
+                client_id=self._client_id,
+                client_secret=self._client_secret,
+                redirect_uri=redirect_uri,
+                state=state,
+                session=http_session,
+            )
+            return client.authorize_url
 
     async def exchange_code(self, code: str, redirect_uri: str) -> HHAccountTokenData:
-        client = hh_api.OAuthClient(
-            client_id=self._client_id,
-            client_secret=self._client_secret,
-            redirect_uri=redirect_uri,
-        )
-        try:
-            token = await asyncio.to_thread(client.authenticate, code)
-        except (hh_api.BadResponse, RequestException) as ex:
-            raise classify_error(ex) from ex
-        return _token_from_oauth_response(token)
+        """Обменять одноразовый code без retry; HTTP-сессия закрывается всегда."""
+        with _TimeoutSession() as http_session:
+            client = hh_api.OAuthClient(
+                client_id=self._client_id,
+                client_secret=self._client_secret,
+                redirect_uri=redirect_uri,
+                session=http_session,
+            )
+            try:
+                token = await asyncio.to_thread(client.authenticate, code)
+                if not isinstance(token, dict) or any(
+                    not isinstance(token.get(key), str) or not token[key].strip()
+                    for key in ("access_token", "refresh_token")
+                ):
+                    raise ValueError("invalid token data")
+                return _token_from_oauth_response(token)
+            except (hh_api.BadResponse, RequestException) as ex:
+                raise classify_error(ex) from ex
+            except (
+                AttributeError,
+                KeyError,
+                ValueError,
+                TypeError,
+                OverflowError,
+                OSError,
+            ) as ex:
+                raise HHPermanentRequestError("HH invalid token response") from ex
 
 
 def _parse_published_at(value: Any) -> datetime | None:
@@ -244,6 +291,32 @@ class HHClient:
     def __init__(self, api_client: HHRequestClient) -> None:
         self._api = api_client
 
+    async def suggest_areas(self, text: str) -> list[HHAreaSuggestion]:
+        """Найти регионы по названию; внешние URL и raw-ответ не покидают адаптер."""
+        response = await self._api.request("GET", "/suggests/areas", {"text": text})
+        if not isinstance(response, dict) or not isinstance(
+            response.get("items"), list
+        ):
+            raise HHPermanentRequestError("Unexpected HH areas response")
+        areas: list[HHAreaSuggestion] = []
+        try:
+            for item in response["items"]:
+                if not isinstance(item, dict):
+                    raise ValueError
+                parent = item.get("parent")
+                if parent is not None and not isinstance(parent, dict):
+                    raise ValueError
+                areas.append(
+                    HHAreaSuggestion(
+                        id=item.get("id"),
+                        name=item.get("text"),
+                        parent_name=parent.get("text") if parent else None,
+                    )
+                )
+        except (TypeError, ValueError) as error:
+            raise HHPermanentRequestError("Unexpected HH areas response") from error
+        return areas
+
     async def search_vacancies(self, params: HHVacancySearchParams) -> HHVacancyPage:
         query: dict[str, Any] = {
             "text": params.text,
@@ -270,6 +343,7 @@ class HHClient:
         try:
             return HHVacancyPage(
                 items=items,
+                received_count=len(raw_items),
                 page=int(response.get("page", 0)),
                 found=int(response.get("found", 0)),
                 pages=int(response.get("pages", 0)),

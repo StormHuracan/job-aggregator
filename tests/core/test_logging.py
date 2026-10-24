@@ -52,3 +52,49 @@ def restore_logging() -> Iterator[None]:
             root.removeHandler(handler)
     root.setLevel(root_level)
     hh_logger.setLevel(hh_level)
+
+
+@pytest.mark.parametrize("logger_name", ["uvicorn.access", "httpx"])
+def test_callback_query_secrets_are_redacted(
+    logger_name: str, caplog: pytest.LogCaptureFixture
+) -> None:
+    configure_logging("INFO")
+    logger = logging.getLogger(logger_name)
+    if logger_name == "uvicorn.access":
+        logger.info(
+            '%s - "%s %s HTTP/%s" %s',
+            "127.0.0.1",
+            "GET",
+            "/api/auth/hh/callback?code=private-code&state=private-state",
+            "1.1",
+            303,
+        )
+    else:
+        from httpx import URL
+
+        logger.info(
+            "HTTP Request: GET %s",
+            URL(
+                "https://example.test/api/auth/hh/callback?code=private-code&state=private-state"
+            ),
+        )
+    assert "/api/auth/hh/callback" in caplog.text
+    assert "private-code" not in caplog.text
+    assert "private-state" not in caplog.text
+
+
+@pytest.mark.parametrize(
+    "path,status,visible",
+    [
+        ("/health", 200, False),
+        ("/health", 500, True),
+        ("/health/db", 200, True),
+        ("/vacancies", 200, True),
+    ],
+)
+def test_only_successful_liveness_probes_are_quiet(path, status, visible, caplog):
+    configure_logging("INFO")
+    logging.getLogger("uvicorn.access").info(
+        '%s - "%s %s HTTP/%s" %s', "127.0.0.1", "GET", path, "1.1", status
+    )
+    assert (f"GET {path} HTTP" in caplog.text) is visible

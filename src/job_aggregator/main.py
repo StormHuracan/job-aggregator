@@ -1,4 +1,5 @@
-from contextlib import asynccontextmanager
+import asyncio
+from contextlib import asynccontextmanager, suppress
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from fastapi import FastAPI
@@ -8,6 +9,13 @@ from job_aggregator.core.config import get_settings
 from job_aggregator.core.logging import configure_logging
 from job_aggregator.db.session import create_engine_and_factory
 from job_aggregator.jobs.scheduler import create_scheduler
+from job_aggregator.services.otp_login import OTPLoginService
+
+
+async def _expire_otp_flows(service: OTPLoginService) -> None:
+    while True:
+        await asyncio.sleep(30)
+        await service.prune()
 
 
 @asynccontextmanager
@@ -23,13 +31,20 @@ async def lifespan(app: FastAPI):
         scheduler = create_scheduler(settings)
         scheduler.start()
     app.state.scheduler = scheduler
+    cleanup = asyncio.create_task(_expire_otp_flows(app.state.otp_logins))
 
     try:
         yield
     finally:
         if scheduler is not None:
             scheduler.shutdown()
-        await engine.dispose()
+        cleanup.cancel()
+        try:
+            with suppress(asyncio.CancelledError):
+                await cleanup
+            await app.state.otp_logins.close()
+        finally:
+            await engine.dispose()
 
 
 def create_app() -> FastAPI:
@@ -37,6 +52,7 @@ def create_app() -> FastAPI:
     configure_logging(settings.log_level)
 
     app = FastAPI(title=settings.app_name, lifespan=lifespan)
+    app.state.otp_logins = OTPLoginService()
     app.include_router(api_router)
     return app
 

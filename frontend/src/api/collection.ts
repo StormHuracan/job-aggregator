@@ -4,6 +4,7 @@ export type CollectionRunRequest = {
   text: string;
   area: string | null;
   pages_limit: number;
+  restart?: boolean;
 };
 
 export type CollectionRunResponse = {
@@ -11,6 +12,8 @@ export type CollectionRunResponse = {
   updated: number;
   skipped: number;
   failed: number;
+  next_page: number;
+  exhausted: boolean;
 };
 
 export function runCollection(input: CollectionRunRequest): Promise<CollectionRunResponse> {

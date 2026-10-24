@@ -1,9 +1,10 @@
 from datetime import UTC, datetime, timedelta, timezone
 from typing import Any
+from urllib.parse import parse_qs, urlparse
 
 import pytest
 
-from job_aggregator.integrations.hh.client import HHClient
+from job_aggregator.integrations.hh.client import HHClient, HHOAuthClient
 from job_aggregator.integrations.hh.dto import HHVacancySearchParams
 from job_aggregator.integrations.hh.errors import (
     HHIntegrationError,
@@ -198,3 +199,13 @@ async def test_search_vacancies_invalid_metadata_raises() -> None:
 
     with pytest.raises(HHIntegrationError):
         await client.search_vacancies(HHVacancySearchParams(text="python"))
+
+
+async def test_get_authorization_url():
+    state = "example"
+    client = HHOAuthClient(client_id="12234", client_secret="23455")
+    response = client.get_authorization_url("https://234.ru", state)
+    query = urlparse(response).query
+    res = parse_qs(query)
+    assert res["state"] == [state]
+    assert res["client_id"] == ["12234"]

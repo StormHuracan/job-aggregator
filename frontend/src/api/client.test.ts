@@ -28,7 +28,7 @@ describe("request", () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("offline")));
 
     await expect(request("/health")).rejects.toEqual(
-      new ApiError(0, "Не удалось подключиться к API"),
+      new ApiError(0, "Не удалось связаться с сервисом. Проверьте интернет и попробуйте ещё раз."),
     );
   });
 
@@ -37,7 +37,7 @@ describe("request", () => {
       new Response('{"detail":"private session data"}', { status: 401 }),
     ));
     await expect(request("/me")).rejects.toEqual(
-      new ApiError(401, "Сессия истекла. Войдите снова"),
+      new ApiError(401, "Войдите снова, чтобы продолжить."),
     );
   });
 
@@ -49,7 +49,7 @@ describe("request", () => {
   it("rejects malformed successful JSON with a safe error", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("<html>private error</html>")));
     await expect(request("/me")).rejects.toEqual(
-      new ApiError(200, "API вернул некорректный ответ"),
+      new ApiError(200, "Не удалось загрузить данные. Попробуйте ещё раз."),
     );
   });
 
@@ -83,10 +83,10 @@ describe("request", () => {
     expect(failure).toMatchObject({
       status: 422,
       message: "Проверьте поля формы и диапазон зарплаты",
-      fieldErrors: { name: "Не более 255 символов", min_salary: "Введите целое неотрицательное число" },
+      fieldErrors: { name: "Не более 255 символов", min_salary: "Введите целое число от 0" },
     });
     expect((failure as ApiError).fieldErrors).toEqual({
-      name: "Не более 255 символов", min_salary: "Введите целое неотрицательное число",
+      name: "Не более 255 символов", min_salary: "Введите целое число от 0",
     });
     expect(JSON.stringify(failure)).not.toContain("secret");
     expect(JSON.stringify(failure)).not.toContain("access_token");

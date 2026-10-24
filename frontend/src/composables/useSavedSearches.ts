@@ -3,17 +3,22 @@ import { useRoute, useRouter } from "vue-router";
 
 import { ApiError } from "../api/client";
 import {
-  createSavedSearch, listSavedSearches, setSavedSearchEnabled,
-  type SavedSearch, type SavedSearchCreate,
+  createSavedSearch,
+  listSavedSearches,
+  setSavedSearchEnabled,
+  type SavedSearch,
+  type SavedSearchCreate,
 } from "../api/saved-searches";
 
 export function useSavedSearches() {
   const router = useRouter();
   const returnTo = useRoute().fullPath;
   let active = true;
-  let expired = false;
-  const isActive = () => active && !expired;
-  onScopeDispose(() => { active = false; });
+  const sessionExpired = ref(false);
+  const isActive = () => active && !sessionExpired.value;
+  onScopeDispose(() => {
+    active = false;
+  });
   const searches = ref<SavedSearch[]>([]);
   const loading = ref(false);
   const loadError = ref<string | null>(null);
@@ -26,18 +31,29 @@ export function useSavedSearches() {
 
   async function handleError(error: unknown): Promise<string> {
     if (isActive() && error instanceof ApiError && error.status === 401) {
-      expired = true;
+      sessionExpired.value = true;
       searches.value = [];
       fieldErrors.value = {};
       createError.value = null;
       toggleErrors.value = {};
-      await router.replace({ path: "/login", query: { redirect: returnTo } });
+      await router.replace({
+        path: "/login",
+        query: { redirect: returnTo, reason: "session-expired" },
+      });
     }
-    return error instanceof ApiError ? error.message : "Не удалось выполнить запрос";
+    return error instanceof ApiError
+      ? error.message
+      : "Не удалось выполнить запрос";
   }
 
   async function reload(): Promise<void> {
-    if (!isActive() || loading.value || creating.value || pendingIds.value.length > 0) return;
+    if (
+      !isActive() ||
+      loading.value ||
+      creating.value ||
+      pendingIds.value.length > 0
+    )
+      return;
     loading.value = true;
     loadError.value = null;
     try {
@@ -45,7 +61,10 @@ export function useSavedSearches() {
       if (isActive()) searches.value = result;
     } catch (error) {
       const message = await handleError(error);
-      if (isActive()) { searches.value = []; loadError.value = message; }
+      if (isActive()) {
+        searches.value = [];
+        loadError.value = message;
+      }
     } finally {
       loading.value = false;
     }
@@ -57,7 +76,8 @@ export function useSavedSearches() {
   }
 
   async function createSearch(input: SavedSearchCreate): Promise<void> {
-    if (!isActive() || creating.value || loading.value || loadError.value) return;
+    if (!isActive() || creating.value || loading.value || loadError.value)
+      return;
     creating.value = true;
     clearCreateErrors();
     try {
@@ -82,7 +102,10 @@ export function useSavedSearches() {
     delete toggleErrors.value[id];
     try {
       const saved = await setSavedSearchEnabled(id, enabled);
-      if (isActive()) searches.value = searches.value.map((search) => search.id === id ? saved : search);
+      if (isActive())
+        searches.value = searches.value.map((search) =>
+          search.id === id ? saved : search,
+        );
     } catch (error) {
       const message = await handleError(error);
       if (isActive()) toggleErrors.value[id] = message;
@@ -92,6 +115,20 @@ export function useSavedSearches() {
   }
 
   onMounted(reload);
-  return { searches, loading, loadError, creating, createError, fieldErrors,
-    pendingIds, toggleErrors, resetKey, reload, createSearch, setEnabled, clearCreateErrors };
+  return {
+    searches,
+    sessionExpired,
+    loading,
+    loadError,
+    creating,
+    createError,
+    fieldErrors,
+    pendingIds,
+    toggleErrors,
+    resetKey,
+    reload,
+    createSearch,
+    setEnabled,
+    clearCreateErrors,
+  };
 }

@@ -55,5 +55,5 @@ uv run pytest tests/integrations/hh -q
 Они запускаются только если задана переменная окружения `TEST_DATABASE_URL`:
 
 ```bash
-docker exec -it job-aggregator-db psql -U postgres -c "CREATE DATABASE job_aggregator_test;"
+docker compose exec postgres psql -U postgres -c "CREATE DATABASE job_aggregator_test;"
 TEST_DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5432/job_aggregator_test uv run pytest tests/db -v

@@ -25,7 +25,7 @@ class HHAccountRepository:
         Отсутствующий пользователь отклоняется без записи токенов в SQL.
         """
         owner_id = await self._session.scalar(
-            select(User.id).where(User.id == user_id).with_for_update()
+            select(User.id).where(User.id == user_id).with_for_update(key_share=True)
         )
         if owner_id is None:
             raise ValueError("Пользователь не найден")
