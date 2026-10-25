@@ -3,6 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from job_aggregator.db.models.saved_search import SavedSearch
 from job_aggregator.db.models.saved_search_match import SavedSearchMatch
+from job_aggregator.db.models.telegram_delivery import TelegramDelivery
 
 
 class SavedSearchRepository:
@@ -96,6 +97,15 @@ class UserSavedSearchRepository:
         search = await self.get_for_user(user_id, search_id)
         if search is None:
             return False
+        await self._session.execute(
+            delete(TelegramDelivery).where(
+                TelegramDelivery.saved_search_match_id.in_(
+                    select(SavedSearchMatch.id).where(
+                        SavedSearchMatch.saved_search_id == search_id
+                    )
+                )
+            )
+        )
         await self._session.execute(
             delete(SavedSearchMatch).where(
                 SavedSearchMatch.saved_search_id == search_id

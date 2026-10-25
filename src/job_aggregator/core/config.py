@@ -30,6 +30,10 @@ class Settings(BaseSettings):
     scheduler_enabled: bool = False
     scheduler_interval_minutes: int = Field(default=60, gt=0)
 
+    telegram_enabled: bool = False
+    telegram_bot_token: str | None = None
+    telegram_bot_username: str | None = None
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

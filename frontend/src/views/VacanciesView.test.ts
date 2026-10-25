@@ -28,7 +28,15 @@ const list = (total = 21) => ({
   offset: 0,
 });
 let wrapper: VueWrapper;
-async function open(path = "/vacancies") {
+const statisticsReload = vi.fn();
+// Статистика загружается своим запросом; тесты страницы изолируют её заглушкой.
+const statisticsStub = {
+  template: '<div data-test="statistics-stub"></div>',
+  setup(_props: unknown, { expose }: { expose: (exposed: object) => void }) {
+    expose({ reload: statisticsReload });
+  },
+};
+async function open(path = "/vacancies", { realStatistics = false } = {}) {
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [
@@ -37,14 +45,50 @@ async function open(path = "/vacancies") {
     ],
   });
   await router.push(path);
-  wrapper = mount(VacanciesView, { global: { plugins: [router] } });
+  wrapper = mount(VacanciesView, {
+    global: {
+      plugins: [router],
+      stubs: realStatistics ? {} : { VacancyStatistics: statisticsStub },
+    },
+  });
   await flushPromises();
   return router;
 }
 afterEach(() => {
   wrapper?.unmount();
+  statisticsReload.mockReset();
   vi.useRealTimers();
   vi.unstubAllGlobals();
+});
+
+describe("Vacancy statistics on the page", () => {
+  it("keeps the vacancy list visible when statistics fail", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockImplementation((url: string) => Promise.resolve(
+      url.endsWith("/vacancies/stats") ? response({}, 500) : response(list()),
+    )));
+
+    await open("/vacancies", { realStatistics: true });
+
+    expect(wrapper.text()).toContain("Python developer");
+    expect(wrapper.text()).toContain("Статистика по сохранённым вакансиям");
+    expect(wrapper.text()).toContain("Не удалось выполнить запрос");
+  });
+
+  it("reloads statistics after a successful manual collection", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockImplementation((url: string) => Promise.resolve(response(
+      url.endsWith("/collection/hh/run")
+        ? { created: 1, updated: 0, skipped: 0, failed: 0, next_page: 1, exhausted: false }
+        : list(),
+    ))));
+    await open();
+    await wrapper.get(".source-toggle").trigger("click");
+    await wrapper.get(".collection-form input").setValue("Python");
+
+    await wrapper.get(".collection-form").trigger("submit");
+    await flushPromises();
+
+    expect(statisticsReload).toHaveBeenCalledOnce();
+  });
 });
 
 describe("Vacancies API search", () => {
