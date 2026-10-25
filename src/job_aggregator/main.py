@@ -8,6 +8,7 @@ from job_aggregator.api.router import api_router
 from job_aggregator.core.config import get_settings
 from job_aggregator.core.logging import configure_logging
 from job_aggregator.db.session import create_engine_and_factory
+from job_aggregator.jobs.collection import register_collection_job
 from job_aggregator.jobs.scheduler import create_scheduler
 from job_aggregator.jobs.telegram import run_telegram_bot
 from job_aggregator.services.otp_login import OTPLoginService
@@ -34,8 +35,10 @@ async def lifespan(app: FastAPI):
     app.state.session_factory = session_factory
 
     scheduler: AsyncIOScheduler | None = None
+    collection_tasks: set[asyncio.Task[None]] = set()
     if settings.scheduler_enabled:
         scheduler = create_scheduler(settings)
+        collection_tasks = register_collection_job(scheduler, session_factory, settings)
         scheduler.start()
     app.state.scheduler = scheduler
     cleanup = asyncio.create_task(_expire_otp_flows(app.state.otp_logins))
@@ -51,6 +54,11 @@ async def lifespan(app: FastAPI):
         try:
             if scheduler is not None:
                 scheduler.shutdown()
+                tasks = list(collection_tasks)
+                for task in tasks:
+                    task.cancel()
+                if tasks:
+                    await asyncio.gather(*tasks, return_exceptions=True)
         finally:
             try:
                 if telegram_task is not None:
