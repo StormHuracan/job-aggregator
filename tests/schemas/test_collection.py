@@ -2,6 +2,7 @@ import pytest
 from pydantic import ValidationError
 
 from job_aggregator.schemas.collection import (
+    CollectionRunProgressResponse,
     CollectionRunRequest,
     CollectionRunResponse,
 )
@@ -65,3 +66,19 @@ def test_collection_run_response_rejects_negative_values(field: str) -> None:
 
     with pytest.raises(ValidationError):
         CollectionRunResponse(**data)
+
+
+def test_restart_is_optional_and_progress_is_validated():
+    assert (
+        CollectionRunRequest(text="python", area=None, pages_limit=1).restart is False
+    )
+    assert (
+        CollectionRunRequest(
+            text="python", area=None, pages_limit=1, restart=True
+        ).restart
+        is True
+    )
+    with pytest.raises(ValidationError):
+        CollectionRunProgressResponse(
+            created=0, updated=0, skipped=0, failed=0, next_page=-1, exhausted=False
+        )

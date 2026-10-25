@@ -20,11 +20,7 @@
     >
     <AsyncState
       :loading="loading"
-      :error="
-        loadError
-          ? `Не удалось загрузить сохранённые поиски. ${loadError}. Попробуйте ещё раз.`
-          : null
-      "
+      :error="loadError"
       ><template #error-actions
         ><UiButton data-action="reload" variant="secondary" @click="reload"
           >Повторить</UiButton

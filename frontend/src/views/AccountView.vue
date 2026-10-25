@@ -3,7 +3,7 @@
     <div class="page-heading">
       <div>
         <h1 id="account-heading">Личный кабинет</h1>
-        <p>Профиль, подключение источника и параметры поиска.</p>
+        <p>Ваш профиль, аккаунт HH.ru и настройки поиска.</p>
       </div>
     </div>
     <AsyncState :error="error" :loading="loading"
@@ -47,7 +47,7 @@
           <form class="settings-form panel" @submit.prevent="save">
             <div>
               <h2>Настройки поиска</h2>
-              <p class="muted">Регион и объём сбора по умолчанию.</p>
+              <p class="muted">Регион и количество страниц для поиска.</p>
             </div>
             <label class="field"
               >Регион по умолчанию<input
@@ -68,7 +68,7 @@
                 >{{ fieldErrors.default_area }}</span
               ></label
             ><label class="field"
-              >Количество страниц за один сбор<input
+              >Сколько страниц посмотреть за один поиск<input
                 v-model.number="pagesLimit"
                 @input="clearFieldError('default_pages_limit')"
                 min="1"
@@ -119,7 +119,7 @@
               <p class="muted">
                 {{
                   user.new_matches_count
-                    ? "Можно сбросить счётчик просмотренных вакансий."
+                    ? "Отметьте новые вакансии просмотренными, когда ознакомитесь с ними."
                     : "Новых совпадений пока нет."
                 }}
               </p>

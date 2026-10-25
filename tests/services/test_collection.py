@@ -1,10 +1,12 @@
 import asyncio
 import logging
+from unittest.mock import AsyncMock
 
 import pytest
 from sqlalchemy.exc import OperationalError
 
 from job_aggregator.db.repositories.vacancy import VacancySaveError, VacancyUpsertResult
+from job_aggregator.integrations.hh.client import HHClient
 from job_aggregator.integrations.hh.dto import HHVacancyPage, HHVacancySearchParams
 from job_aggregator.integrations.hh.errors import HHTemporaryError
 from job_aggregator.schemas.collection import CollectionRunResponse
@@ -178,11 +180,9 @@ async def test_collect_pages_stops_on_empty_page() -> None:
     params = HHVacancySearchParams(text="python")
     client = FakeHHClient(
         pages={
-            0: HHVacancyPage(items=[make_vacancy_data()], page=0, found=2, pages=2),
-            1: HHVacancyPage(items=[], page=1, found=2, pages=2),
-            2: HHVacancyPage(
-                items=[make_vacancy_data()], page=2, found=2, pages=2
-            ),  # Не должна
+            0: HHVacancyPage(items=[make_vacancy_data()], page=0, found=2, pages=3),
+            1: HHVacancyPage(items=[], page=1, found=2, pages=3),
+            2: HHVacancyPage(items=[make_vacancy_data()], page=2, found=2, pages=3),
         }
     )
     repo = FakeVacancyRepository([VacancyUpsertResult.CREATED])
@@ -240,3 +240,256 @@ async def test_collect_pages_propagates_infrastructure_error() -> None:
 
     with pytest.raises(HHTemporaryError):
         await service.collect_pages(params, pages_limit=3)
+
+
+async def test_progress_reports_actual_end_after_unchanged_page() -> None:
+    item = make_vacancy_data()
+    client = FakeHHClient(
+        pages={
+            2: HHVacancyPage(items=[item], page=2, found=4, pages=4),
+            3: HHVacancyPage(items=[item], page=3, found=4, pages=4),
+        }
+    )
+    service = VacancyCollectionService(
+        client,
+        FakeVacancyRepository(
+            [VacancyUpsertResult.UNCHANGED, VacancyUpsertResult.CREATED]
+        ),
+    )
+    result = await service.collect_pages_with_progress(
+        HHVacancySearchParams(text="python", page=2), 5
+    )
+    assert [call.page for call in client.calls] == [2, 3]
+    assert (result.created, result.skipped, result.next_page, result.exhausted) == (
+        1,
+        1,
+        4,
+        True,
+    )
+
+
+async def test_progress_stops_at_limit_and_handles_empty_shortened_results() -> None:
+    client = FakeHHClient(
+        pages={
+            0: HHVacancyPage(items=[make_vacancy_data()], page=0, found=5, pages=5),
+            1: HHVacancyPage(items=[], page=1, found=0, pages=0),
+        }
+    )
+    service = VacancyCollectionService(
+        client, FakeVacancyRepository([VacancyUpsertResult.CREATED])
+    )
+    first = await service.collect_pages_with_progress(
+        HHVacancySearchParams(text="python"), 1
+    )
+    assert (first.next_page, first.exhausted) == (1, False)
+    last = await service.collect_pages_with_progress(
+        HHVacancySearchParams(text="python", page=1), 5
+    )
+    assert (last.next_page, last.exhausted) == (2, True)
+    assert [call.page for call in client.calls] == [0, 1]
+
+
+async def test_rejected_hh_page_does_not_exhaust_available_results():
+    api = AsyncMock()
+    api.request.side_effect = [
+        {
+            "items": [{"id": "bad", "name": "Python", "employer": {}}],
+            "page": 0,
+            "found": 2,
+            "pages": 2,
+        },
+        {
+            "items": [
+                {
+                    "id": "good",
+                    "name": "Python",
+                    "employer": {"name": "Компания"},
+                    "alternate_url": "https://hh.ru/vacancy/good",
+                }
+            ],
+            "page": 1,
+            "found": 2,
+            "pages": 2,
+        },
+    ]
+    repository = FakeVacancyRepository([VacancyUpsertResult.CREATED])
+    service = VacancyCollectionService(HHClient(api), repository)
+    first = await service.collect_pages_with_progress(
+        HHVacancySearchParams(text="python"), 1
+    )
+    assert (first.next_page, first.exhausted, first.failed) == (1, False, 1)
+    second = await service.collect_pages_with_progress(
+        HHVacancySearchParams(text="python", page=first.next_page), 1
+    )
+    assert (second.created, second.next_page, second.exhausted) == (1, 2, True)
+    assert repository.calls[0].external_id == "good"
+
+
+async def test_collect_pages_immutability_and_non_zero_start() -> None:
+    params = HHVacancySearchParams(text="python", page=2, per_page=50, area="1")
+    client = FakeHHClient(
+        pages={
+            2: HHVacancyPage(items=[make_vacancy_data()], page=2, found=2, pages=2),
+        }
+    )
+    repo = FakeVacancyRepository([VacancyUpsertResult.CREATED])
+
+    service = VacancyCollectionService(client, repo)
+    await service.collect_pages(params, pages_limit=2)
+
+    assert params.page == 2
+    assert params.area == "1"
+    assert params.per_page == 50
+
+    assert len(client.calls) == 1
+    called_params = client.calls[0]
+    assert called_params.page == 2
+    assert called_params.area == "1"
+    assert called_params.per_page == 50
+
+
+async def test_collect_pages_stops_by_limit_despite_metadata() -> None:
+    params = HHVacancySearchParams(text="python")
+    client = FakeHHClient(
+        pages={
+            0: HHVacancyPage(items=[make_vacancy_data()], page=0, found=10, pages=10),
+            1: HHVacancyPage(items=[make_vacancy_data()], page=1, found=10, pages=10),
+            2: HHVacancyPage(items=[make_vacancy_data()], page=2, found=10, pages=10),
+        }
+    )
+    repo = FakeVacancyRepository([VacancyUpsertResult.CREATED] * 3)
+
+    service = VacancyCollectionService(client, repo)
+    result = await service.collect_pages(params, pages_limit=2)
+
+    assert result.created == 2
+    assert len(client.calls) == 2
+
+
+async def test_collect_pages_stops_by_inconsistent_metadata() -> None:
+    params = HHVacancySearchParams(text="python")
+    client = FakeHHClient(
+        pages={
+            0: HHVacancyPage(items=[make_vacancy_data()], page=0, found=10, pages=1),
+            1: HHVacancyPage(items=[make_vacancy_data()], page=1, found=10, pages=1),
+        }
+    )
+    repo = FakeVacancyRepository([VacancyUpsertResult.CREATED])
+
+    service = VacancyCollectionService(client, repo)
+    result = await service.collect_pages(params, pages_limit=5)
+
+    assert result.created == 1
+    assert len(client.calls) == 1
+
+
+async def test_collect_pages_all_counters_across_pages() -> None:
+    params = HHVacancySearchParams(text="python")
+    client = FakeHHClient(
+        pages={
+            0: HHVacancyPage(
+                items=[
+                    make_vacancy_data(external_id="1"),
+                    make_vacancy_data(external_id="2"),
+                ],
+                page=0,
+                found=4,
+                pages=2,
+            ),
+            1: HHVacancyPage(
+                items=[
+                    make_vacancy_data(external_id="3"),
+                    make_vacancy_data(external_id="4"),
+                ],
+                page=1,
+                found=4,
+                pages=2,
+            ),
+        }
+    )
+    repo = FakeVacancyRepository(
+        [
+            VacancyUpsertResult.CREATED,
+            VacancyUpsertResult.UPDATED,
+            VacancySaveError("bad"),
+            VacancyUpsertResult.UNCHANGED,
+        ]
+    )
+
+    service = VacancyCollectionService(client, repo)
+    result = await service.collect_pages(params, pages_limit=2)
+
+    assert result.created == 1
+    assert result.updated == 1
+    assert result.skipped == 1
+    assert result.failed == 1
+
+
+async def test_collect_pages_continues_after_fully_failed_page() -> None:
+    params = HHVacancySearchParams(text="python")
+    client = FakeHHClient(
+        pages={
+            0: HHVacancyPage(items=[make_vacancy_data()], page=0, found=2, pages=2),
+            1: HHVacancyPage(items=[make_vacancy_data()], page=1, found=2, pages=2),
+        }
+    )
+    repo = FakeVacancyRepository(
+        [
+            VacancySaveError("page 0 fail"),
+            VacancyUpsertResult.CREATED,
+        ]
+    )
+
+    service = VacancyCollectionService(client, repo)
+    result = await service.collect_pages(params, pages_limit=2)
+
+    assert result.failed == 1
+    assert result.created == 1
+    assert len(client.calls) == 2
+
+
+async def test_collect_pages_stops_on_second_page_request_error() -> None:
+    params = HHVacancySearchParams(text="python")
+    error = HHTemporaryError("network fail")
+
+    class FailingClient(FakeHHClient):
+        async def search_vacancies(self, params):
+            if params.page == 1:
+                self.calls.append(params)
+                raise error
+            return await super().search_vacancies(params)
+
+    client = FailingClient(
+        pages={
+            0: HHVacancyPage(items=[make_vacancy_data()], page=0, found=2, pages=2),
+        }
+    )
+    repo = FakeVacancyRepository([VacancyUpsertResult.CREATED])
+
+    service = VacancyCollectionService(client, repo)
+    with pytest.raises(HHTemporaryError):
+        await service.collect_pages(params, pages_limit=3)
+
+    assert len(client.calls) == 2
+
+
+async def test_collect_pages_stops_on_operational_error_during_save() -> None:
+    params = HHVacancySearchParams(text="python")
+    client = FakeHHClient(
+        pages={
+            0: HHVacancyPage(items=[make_vacancy_data()], page=0, found=2, pages=2),
+            1: HHVacancyPage(items=[make_vacancy_data()], page=1, found=2, pages=2),
+        }
+    )
+
+    error = OperationalError("stmt", {}, Exception("connection lost"))
+    repo = FakeVacancyRepository(
+        [
+            VacancyUpsertResult.CREATED,
+            error,
+        ]
+    )
+
+    service = VacancyCollectionService(client, repo)
+    with pytest.raises(OperationalError):
+        await service.collect_pages(params, pages_limit=2)

@@ -39,7 +39,7 @@ export function validationFieldErrors(body: unknown): Record<string, string> {
       field === "default_pages_limit"
         ? "Введите целое число от 1"
         : field === "min_salary" || field === "max_salary"
-          ? "Введите целое неотрицательное число"
+          ? "Введите целое число от 0"
           : item.type === "string_too_long"
             ? "Не более 255 символов"
             : "Проверьте значение поля";

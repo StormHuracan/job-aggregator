@@ -76,7 +76,7 @@
       </div>
     </form>
     <div class="source-toolbar">
-      <p>Поиск по уже собранным вакансиям</p>
+      <p>Поиск по вакансиям в списке</p>
       <button
         class="source-toggle"
         :aria-expanded="showCollection"
@@ -93,43 +93,61 @@
     >
       <h2>Получить вакансии с HH.ru</h2>
       <p class="muted">
-        Загрузим вакансии по отдельному запросу и добавим их в общую базу.
-        Требуется подключённый аккаунт HH.ru.
+        Найдём вакансии по вашему запросу и добавим их в список.
+        При повторном поиске продолжим с того места, где остановились.
+        Для этого войдите через HH.ru.
       </p>
-      <form class="collection-form" @submit.prevent="collect">
-        <label class="field"
-          >Поисковый запрос<input
-            v-model.trim="collectionText"
-            required
-            maxlength="255"
-            placeholder="Python developer"
-            :disabled="collectionRunning" /></label
-        ><label class="field"
-          >ID региона HH.ru<input
-            v-model.trim="collectionArea"
-            placeholder="Например, 1 — Москва"
-            :disabled="collectionRunning" /></label
-        ><label class="field"
-          >Количество страниц<input
-            v-model.number="collectionPages"
-            type="number"
-            min="1"
-            step="1"
-            required
-            :disabled="collectionRunning" /></label
-        ><UiButton
-          type="submit"
-          :busy="collectionRunning"
-          :disabled="collectionRunning"
-          >{{ collectionRunning ? "Получаем…" : "Получить вакансии" }}</UiButton
-        >
+      <form ref="collectionForm" class="collection-form" @submit.prevent="collect()">
+        <div class="collection-fields">
+          <div class="field collection-query">
+            <label for="collection-query">Должность или технология</label>
+            <input id="collection-query" v-model.trim="collectionText" required
+              maxlength="255" placeholder="Например, Python developer"
+              :disabled="collectionRunning" />
+          </div>
+          <RegionPicker v-model="collectionArea" :disabled="collectionRunning"
+            @unauthorized="expireAreaSession" />
+          <div class="field">
+            <label for="collection-pages">Страниц за поиск</label>
+            <input id="collection-pages" v-model.number="collectionPages" type="number"
+              min="1" step="1" required :disabled="collectionRunning"
+              aria-describedby="collection-pages-hint" />
+            <span id="collection-pages-hint" class="field-hint">До 20 вакансий на странице.</span>
+          </div>
+        </div>
+        <div class="collection-actions">
+          <UiButton
+            type="submit"
+            :busy="collectionRunning"
+            :disabled="collectionRunning || collectionAtEnd"
+          >{{
+              collectionRunning
+                ? "Получаем…"
+                : hasCollectionProgress
+                  ? "Продолжить поиск"
+                  : "Получить вакансии"
+            }}</UiButton>
+          <UiButton
+            variant="secondary"
+            :disabled="collectionRunning"
+            @click="collect(true)"
+          >Проверить новые вакансии</UiButton>
+        </div>
       </form>
+      <p class="field-hint">
+        «Проверить новые вакансии» начнёт поиск сначала и обновит уже найденные.
+      </p>
+      <p v-if="collectionAtEnd" role="status">
+        Все доступные вакансии по этому запросу просмотрены. Проверьте новые
+        вакансии позже или измените запрос.
+      </p>
     </div>
     <UiAlert
       v-if="collectionMessage"
       :tone="collectionError ? 'error' : 'success'"
       >{{ collectionMessage }}</UiAlert
     >
+    <VacancyStatistics ref="statistics" />
     <div class="section-heading">
       <h2>
         Вакансии
@@ -141,11 +159,7 @@
     </div>
     <AsyncState
       :loading="loading"
-      :error="
-        loadError
-          ? `Не удалось загрузить вакансии. ${loadError}. Попробуйте ещё раз.`
-          : null
-      "
+      :error="loadError"
       ><template #error-actions
         ><UiButton variant="secondary" @click="load"
           >Повторить загрузку</UiButton
@@ -181,7 +195,7 @@
       </div>
       <nav
         v-if="result && result.items.length > 0"
-        aria-label="Пагинация"
+        aria-label="Страницы вакансий"
         class="pagination"
       >
         <p>
@@ -213,13 +227,17 @@ import { useRoute, useRouter } from "vue-router";
 import { ApiError } from "../api/client";
 import { listVacancies, type VacancyListResponse } from "../api/vacancies";
 import { runCollection } from "../api/collection";
+import type { HHAreaSuggestion } from "../api/hh-areas";
+import RegionPicker from "../components/RegionPicker.vue";
 import AsyncState from "../components/AsyncState.vue";
 import VacancyCard from "../components/VacancyCard.vue";
+import VacancyStatistics from "../components/VacancyStatistics.vue";
 import EmptyState from "../components/ui/EmptyState.vue";
 import UiButton from "../components/ui/UiButton.vue";
 import UiAlert from "../components/ui/UiAlert.vue";
 const route = useRoute();
 const router = useRouter();
+const statistics = ref<InstanceType<typeof VacancyStatistics>>();
 const text = ref("");
 const company = ref("");
 const area = ref("");
@@ -354,14 +372,34 @@ async function changePage(direction: number): Promise<void> {
 }
 const showCollection = ref(false);
 const collectionText = ref("");
-const collectionArea = ref("");
+const collectionArea = ref<HHAreaSuggestion | null>(null);
 const collectionPages = ref(1);
 const collectionRunning = ref(false);
+const collectionForm = ref<HTMLFormElement>();
 const collectionMessage = ref("");
 const collectionError = ref(false);
-async function collect(): Promise<void> {
+const collectionKey = computed(() =>
+  JSON.stringify([collectionText.value.trim(), collectionArea.value?.id ?? null]),
+);
+const lastCollection = ref<{ key: string; exhausted: boolean } | null>(null);
+const hasCollectionProgress = computed(
+  () => lastCollection.value?.key === collectionKey.value,
+);
+const collectionAtEnd = computed(
+  () => hasCollectionProgress.value && lastCollection.value!.exhausted,
+);
+watch(collectionKey, () => {
+  collectionMessage.value = "";
+});
+async function expireAreaSession(): Promise<void> {
+  await message(new ApiError(401, "Войдите снова, чтобы продолжить."));
+}
+async function collect(restart = false): Promise<void> {
+  if (!collectionForm.value?.reportValidity()) return;
   if (
     collectionRunning.value ||
+    sessionExpired.value ||
+    (!restart && collectionAtEnd.value) ||
     !collectionText.value ||
     !Number.isSafeInteger(collectionPages.value) ||
     collectionPages.value < 1
@@ -370,21 +408,26 @@ async function collect(): Promise<void> {
   collectionRunning.value = true;
   collectionMessage.value = "";
   collectionError.value = false;
+  const key = collectionKey.value;
   try {
     const data = await runCollection({
       text: collectionText.value,
-      area: collectionArea.value || null,
+      area: collectionArea.value?.id ?? null,
       pages_limit: collectionPages.value,
+      restart,
     });
     if (!active) return;
-    collectionMessage.value = `Сбор завершён. Добавлено: ${data.created}, обновлено: ${data.updated}, пропущено: ${data.skipped}, ошибок: ${data.failed}.`;
+    lastCollection.value = { key, exhausted: data.exhausted };
+    collectionMessage.value = `Найдено новых: ${data.created}. Обновлено: ${data.updated}. Уже есть в списке: ${data.skipped}.`;
+    if (data.failed) collectionMessage.value += ` Не удалось загрузить: ${data.failed}. Попробуйте проверить новые вакансии ещё раз.`;
+    void statistics.value?.reload();
     await load();
   } catch (error) {
     if (!active) return;
     collectionError.value = true;
     collectionMessage.value =
       error instanceof ApiError && error.status === 409
-        ? "Подключите HH.ru повторно, чтобы запустить сбор вакансий."
+        ? "Подключите HH.ru повторно, чтобы получить вакансии."
         : await message(error);
   } finally {
     collectionRunning.value = false;
@@ -460,11 +503,17 @@ async function collect(): Promise<void> {
   margin-bottom: 20px;
   padding: 24px;
 }
-.collection-form {
-  align-items: end;
+.collection-fields {
+  align-items: start;
   display: grid;
+  gap: 20px;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1.5fr) minmax(140px, 0.8fr);
+}
+.collection-actions {
+  display: flex;
+  flex-wrap: wrap;
   gap: 12px;
-  grid-template-columns: 2fr 1.3fr 1fr auto;
+  margin-block: 20px 12px;
 }
 .result-count {
   background: var(--color-surface-subtle);
@@ -497,8 +546,11 @@ async function collect(): Promise<void> {
 }
 @media (max-width: 900px) {
   .advanced-fields,
-  .collection-form {
+  .collection-fields {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .collection-query {
+    grid-column: 1 / -1;
   }
 }
 @media (max-width: 640px) {
@@ -510,8 +562,11 @@ async function collect(): Promise<void> {
     grid-template-columns: 1fr;
   }
   .advanced-fields,
-  .collection-form {
+  .collection-fields {
     grid-template-columns: 1fr;
+  }
+  .collection-actions > button {
+    width: 100%;
   }
   .source-toolbar {
     margin-bottom: 8px;

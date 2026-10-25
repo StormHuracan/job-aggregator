@@ -10,9 +10,15 @@ from job_aggregator.core.config import get_settings
 from job_aggregator.db.base import Base
 from job_aggregator.db.models import (  # noqa: F401
     auth_session,
+    collection_progress,
     hh_account,
     hh_account_token,
     saved_search,
+    saved_search_match,
+    telegram_binding,
+    telegram_bot_state,
+    telegram_delivery,
+    telegram_link_token,
     user,
     vacancy,
 )

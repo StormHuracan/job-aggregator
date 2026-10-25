@@ -8,9 +8,11 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from job_aggregator.db.base import Base
 from job_aggregator.db.models import (  # noqa: F401
     auth_session,
+    collection_progress,
     hh_account,
     hh_account_token,
     saved_search,
+    saved_search_match,
     user,
     vacancy,
 )

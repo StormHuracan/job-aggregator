@@ -41,3 +41,20 @@ export function listVacancies(query: VacancyListQuery): Promise<VacancyListRespo
   }
   return request<VacancyListResponse>(`/vacancies?${params}`);
 }
+
+export type AreaVacancyCount = {
+  area_name: string;
+  vacancies_count: number;
+};
+
+export type VacancyStatisticsResponse = {
+  total_vacancies: number;
+  salary_currency: "RUR";
+  salary_sample_size: number;
+  average_salary: number | null;
+  top_areas: AreaVacancyCount[];
+};
+
+export function getVacancyStatistics(): Promise<VacancyStatisticsResponse> {
+  return request<VacancyStatisticsResponse>("/vacancies/stats");
+}
