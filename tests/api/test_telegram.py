@@ -200,3 +200,27 @@ async def test_new_telegram_link_invalidates_previous_token(
     assert (
         stored_tokens[0].token_hash == hashlib.sha256(second_token.encode()).hexdigest()
     )
+
+
+async def test_telegram_status_is_private_and_isolated(
+    async_client: AsyncClient, api_session_override, sqlite_session: AsyncSession
+) -> None:
+    from job_aggregator.db.models.telegram_binding import TelegramBinding
+
+    assert (await async_client.get("/me/telegram")).status_code == 401
+    first, token = await _create_user_and_token(sqlite_session, "status-a")
+    _, second_token = await _create_user_and_token(sqlite_session, "status-b")
+    sqlite_session.add(
+        TelegramBinding(
+            user_id=first.id, chat_id=123456, connected_at=datetime.now(UTC)
+        )
+    )
+    await sqlite_session.commit()
+    async_client.cookies.set(SESSION_COOKIE_NAME, token)
+    response = await async_client.get("/me/telegram")
+    assert response.status_code == 200
+    assert set(response.json()) == {"enabled", "connected"}
+    assert response.json()["connected"] is True
+    assert response.headers["cache-control"] == "no-store"
+    async_client.cookies.set(SESSION_COOKIE_NAME, second_token)
+    assert (await async_client.get("/me/telegram")).json()["connected"] is False
