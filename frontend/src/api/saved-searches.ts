@@ -22,11 +22,17 @@ export type SavedSearchCreate = {
 
 export type SavedSearchUpdate = { is_enabled: boolean };
 
+export function deleteSavedSearch(id: number): Promise<void> {
+  return request<void>(`/saved-searches/${id}`, { method: "DELETE" });
+}
+
 export function listSavedSearches(): Promise<SavedSearch[]> {
   return request<SavedSearch[]>("/saved-searches");
 }
 
-export function createSavedSearch(input: SavedSearchCreate): Promise<SavedSearch> {
+export function createSavedSearch(
+  input: SavedSearchCreate,
+): Promise<SavedSearch> {
   return request<SavedSearch>("/saved-searches", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -34,7 +40,10 @@ export function createSavedSearch(input: SavedSearchCreate): Promise<SavedSearch
   });
 }
 
-export function setSavedSearchEnabled(id: number, isEnabled: boolean): Promise<SavedSearch> {
+export function setSavedSearchEnabled(
+  id: number,
+  isEnabled: boolean,
+): Promise<SavedSearch> {
   const update: SavedSearchUpdate = { is_enabled: isEnabled };
   return request<SavedSearch>(`/saved-searches/${id}`, {
     method: "PATCH",

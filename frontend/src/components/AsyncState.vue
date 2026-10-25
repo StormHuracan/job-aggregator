@@ -4,7 +4,11 @@ defineProps<{ loading: boolean; error: string | null }>();
 </script>
 <template>
   <div v-if="loading" class="loading" aria-busy="true" role="status">
-    <span class="loading-dot" aria-hidden="true"></span>Загрузка…
+    <span class="sr-only">Загрузка…</span
+    ><slot name="loading"
+      ><span class="loading-dot" aria-hidden="true"></span
+      ><span aria-hidden="true">Загрузка…</span></slot
+    >
   </div>
   <UiAlert v-else-if="error" tone="error"
     ><p>{{ error }}</p>

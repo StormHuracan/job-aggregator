@@ -4,6 +4,7 @@ import { useRoute, useRouter } from "vue-router";
 import { ApiError } from "../api/client";
 import {
   createSavedSearch,
+  deleteSavedSearch,
   listSavedSearches,
   setSavedSearchEnabled,
   type SavedSearch,
@@ -114,6 +115,25 @@ export function useSavedSearches() {
     }
   }
 
+  async function removeSearch(id: number): Promise<boolean> {
+    if (!isActive() || loading.value || pendingIds.value.includes(id))
+      return false;
+    pendingIds.value = [...pendingIds.value, id];
+    delete toggleErrors.value[id];
+    try {
+      await deleteSavedSearch(id);
+      if (!isActive()) return false;
+      searches.value = searches.value.filter((search) => search.id !== id);
+      return true;
+    } catch (error) {
+      const message = await handleError(error);
+      if (isActive()) toggleErrors.value[id] = message;
+      return false;
+    } finally {
+      pendingIds.value = pendingIds.value.filter((pending) => pending !== id);
+    }
+  }
+
   onMounted(reload);
   return {
     searches,
@@ -129,6 +149,7 @@ export function useSavedSearches() {
     reload,
     createSearch,
     setEnabled,
+    removeSearch,
     clearCreateErrors,
   };
 }

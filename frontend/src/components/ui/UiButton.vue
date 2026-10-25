@@ -13,6 +13,7 @@ withDefaults(
     :type="type"
     :class="`button-${variant}`"
     :aria-busy="busy || undefined"
+    :disabled="busy || undefined"
   >
     <slot />
   </button>

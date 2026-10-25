@@ -35,8 +35,34 @@ afterEach(() => {
 });
 
 describe("AccountView live API", () => {
+  it("does not promise that the stored default region is used by collection", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(json(user)));
+    await open();
+    expect(wrapper.text()).toContain(
+      "Регион пока хранится как предпочтение и не применяется автоматически",
+    );
+  });
+  it.each([
+    ["2030-01-01T00:00:00Z", "Доступ действует до"],
+    ["2020-01-01T00:00:00Z", "Срок доступа истёк"],
+    [null, "Срок доступа не указан"],
+  ])(
+    "explains stored HH access expiry %s without claiming a live check",
+    async (expiry, label) => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValue(json({ ...user, access_expires_at: expiry })),
+      );
+      await open();
+      expect(wrapper.text()).toContain(label);
+      expect(wrapper.text()).toContain("Статус сохранённого подключения");
+    },
+  );
   it("hides unavailable match statistics instead of showing a fake zero", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(json({ ...user, new_matches_count: null })));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(json({ ...user, new_matches_count: null })),
+    );
     await open();
     expect(wrapper.find(".matches").exists()).toBe(false);
     expect(wrapper.text()).toContain("Даниил");

@@ -178,3 +178,37 @@ async def test_list_enabled_user_ids_unique_and_filters(
     result = await repo.list_enabled_user_ids()
 
     assert result == [alice.id, bob.id]
+
+
+async def test_delete_search_removes_delivered_matches(
+    sqlite_session: AsyncSession, users: tuple[User, User]
+) -> None:
+    from datetime import UTC, datetime
+
+    from job_aggregator.db.models.saved_search_match import SavedSearchMatch
+    from job_aggregator.db.models.telegram_delivery import TelegramDelivery
+    from job_aggregator.db.models.vacancy import Vacancy
+    from job_aggregator.db.repositories.vacancy import VacancyRepository
+    from tests.factories import make_vacancy_data
+
+    owner, _ = users
+    repo = UserSavedSearchRepository(sqlite_session)
+    search = await _create_search(repo, owner.id, "Delivered")
+    await VacancyRepository(sqlite_session).upsert(make_vacancy_data())
+    vacancy = await sqlite_session.scalar(select(Vacancy))
+    match = SavedSearchMatch(
+        saved_search_id=search.id, vacancy_id=vacancy.id, matched_at=datetime.now(UTC)
+    )
+    sqlite_session.add(match)
+    await sqlite_session.flush()
+    sqlite_session.add(
+        TelegramDelivery(saved_search_match_id=match.id, delivered_at=datetime.now(UTC))
+    )
+    await sqlite_session.commit()
+    assert await repo.delete_for_user(owner.id, search.id)
+    await sqlite_session.commit()
+    assert (
+        await sqlite_session.scalar(select(func.count()).select_from(TelegramDelivery))
+        == 0
+    )
+    assert await sqlite_session.scalar(select(func.count()).select_from(Vacancy)) == 1

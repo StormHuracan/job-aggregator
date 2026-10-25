@@ -1,14 +1,56 @@
 from collections.abc import AsyncIterator
+from datetime import UTC, datetime
 
 import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from job_aggregator.db.models.saved_search_match import SavedSearchMatch
 from job_aggregator.db.models.user import User
+from job_aggregator.db.models.vacancy import Vacancy
 from job_aggregator.db.session import get_db_session
 from job_aggregator.services.auth_sessions import AuthSessionService
 
 SESSION_COOKIE_NAME = "job_aggregator_session"
+
+
+async def test_delete_search_is_owner_scoped(
+    async_client: AsyncClient, api_session_override, sqlite_session: AsyncSession
+) -> None:
+    _, token_a = await _create_user_and_token(sqlite_session, "delete-a")
+    _, token_b = await _create_user_and_token(sqlite_session, "delete-b")
+    async_client.cookies.set(SESSION_COOKIE_NAME, token_a)
+    created = await async_client.post(
+        "/saved-searches", json={"name": "Python", "text": "backend"}
+    )
+    path = f"/saved-searches/{created.json()['id']}"
+    vacancy = Vacancy(
+        external_id="delete-test",
+        title="Backend",
+        company_name="Company",
+        source_url="https://hh.ru/vacancy/delete-test",
+    )
+    sqlite_session.add(vacancy)
+    await sqlite_session.flush()
+    sqlite_session.add(
+        SavedSearchMatch(
+            saved_search_id=created.json()["id"],
+            vacancy_id=vacancy.id,
+            matched_at=datetime.now(UTC),
+        )
+    )
+    await sqlite_session.commit()
+    async_client.cookies.set(SESSION_COOKIE_NAME, token_b)
+    assert (await async_client.delete(path)).status_code == 404
+    async_client.cookies.set(SESSION_COOKIE_NAME, token_a)
+    assert (await async_client.delete(path)).status_code == 204
+    assert (await async_client.get("/saved-searches")).json() == []
+    assert (await async_client.get("/me")).json()["new_matches_count"] == 0
+    remaining = await async_client.get("/vacancies?limit=20&offset=0")
+    assert remaining.json()["items"][0]["external_id"] == "delete-test"
+    assert (await async_client.delete(path)).status_code == 404
+    async_client.cookies.clear()
+    assert (await async_client.delete(path)).status_code == 401
 
 
 async def _create_user_and_token(session: AsyncSession, label: str) -> tuple[User, str]:

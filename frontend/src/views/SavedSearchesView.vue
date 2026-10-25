@@ -8,25 +8,24 @@
         </p>
       </div>
       <UiButton
-        :disabled="loading || !!loadError"
-        :aria-expanded="formOpen"
-        aria-controls="new-search"
+        data-action="new-search"
+        :disabled="loading || !!loadError || creating"
         @click="openForm"
-        >Новый поиск <span aria-hidden="true">+</span></UiButton
+        ><UiIcon name="plus" />Новый поиск</UiButton
       >
     </div>
-    <UiAlert v-if="resetKey > 0" tone="success"
+    <UiAlert v-if="showSuccess" tone="success"
       >Поиск сохранён. Его параметры появились в списке.</UiAlert
     >
-    <AsyncState
-      :loading="loading"
-      :error="loadError"
+    <UiAlert v-if="deleteSuccess" tone="success">Поиск удалён.</UiAlert>
+    <AsyncState :loading="loading" :error="loadError"
+      ><template #loading><UiSkeleton variant="vacancy" /></template
       ><template #error-actions
         ><UiButton data-action="reload" variant="secondary" @click="reload"
           >Повторить</UiButton
         ></template
       >
-      <div class="saved-layout">
+      <div>
         <div class="searches-list">
           <div class="section-heading">
             <h2>Ваши поиски</h2>
@@ -38,43 +37,55 @@
               :pending-ids="pendingIds"
               :toggle-errors="toggleErrors"
               @toggle="setEnabled"
+              @delete="deleteTarget = $event"
             />
           </div>
+          <p id="activity-hint" class="field-hint activity-hint">
+            Активность определяет участие поиска в плановом сборе. Переключение
+            не запускает загрузку; автоматическое расписание пока не подключено.
+            Просмотр вакансий открывает уже собранные результаты.
+          </p>
         </div>
-        <details
-          id="new-search"
-          ref="formPanel"
-          class="new-search panel"
-          :open="formOpen"
-          @toggle="formOpen = ($event.target as HTMLDetailsElement).open"
-        >
-          <summary>
-            Создать новый поиск<span aria-hidden="true">+</span>
-          </summary>
-          <div class="form-content">
-            <p class="field-hint form-intro">
-              Укажите запрос. Регион и зарплату можно оставить пустыми.
-            </p>
-            <SavedSearchForm
-              :disabled="loading || loadError !== null"
-              :submitting="creating"
-              :field-errors="fieldErrors"
-              :reset-key="resetKey"
-              @create="createSearch"
-              @clear-errors="clearCreateErrors"
-            /><UiAlert v-if="createError" tone="error" class="create-error">{{
-              createError
-            }}</UiAlert>
-          </div>
-        </details>
       </div>
     </AsyncState>
+    <SavedSearchDialog
+      :open="formOpen"
+      :submitting="creating"
+      :field-errors="fieldErrors"
+      :error="createError"
+      @create="createSearch"
+      @clear-errors="clearCreateErrors"
+      @close="formOpen = false"
+    />
+    <UiDialog
+      :open="deleteTarget !== null"
+      title="Удалить сохранённый поиск?"
+      @close="deleteTarget = null"
+    >
+      <UiAlert
+        v-if="deleteTarget && toggleErrors[deleteTarget.id]"
+        tone="error"
+        >{{ toggleErrors[deleteTarget.id] }}</UiAlert
+      >
+      <p>
+        Поиск «{{ deleteTarget?.name }}» и его совпадения будут удалены. Сами
+        вакансии останутся. Отменить удаление нельзя.
+      </p>
+      <UiButton :busy="deleting" @click="confirmDelete">{{
+        deleting ? "Удаляем…" : "Удалить поиск"
+      }}</UiButton>
+      <UiButton variant="ghost" @click="deleteTarget = null">Отмена</UiButton>
+    </UiDialog>
   </section>
 </template>
 <script setup lang="ts">
-import { nextTick, ref } from "vue";
+import { ref, watch } from "vue";
+import type { SavedSearch } from "../api/saved-searches";
+import UiDialog from "../components/ui/UiDialog.vue";
 import AsyncState from "../components/AsyncState.vue";
-import SavedSearchForm from "../components/SavedSearchForm.vue";
+import SavedSearchDialog from "../components/SavedSearchDialog.vue";
+import UiSkeleton from "../components/ui/UiSkeleton.vue";
+import UiIcon from "../components/ui/UiIcon.vue";
 import SavedSearchList from "../components/SavedSearchList.vue";
 import UiAlert from "../components/ui/UiAlert.vue";
 import UiButton from "../components/ui/UiButton.vue";
@@ -84,6 +95,7 @@ const {
   createSearch,
   searches,
   setEnabled,
+  removeSearch,
   loading,
   loadError,
   creating,
@@ -96,64 +108,41 @@ const {
   clearCreateErrors,
 } = useSavedSearches();
 const formOpen = ref(false);
-const formPanel = ref<HTMLDetailsElement>();
-async function openForm(): Promise<void> {
+const deleteTarget = ref<SavedSearch | null>(null);
+const deleting = ref(false);
+const deleteSuccess = ref(false);
+async function confirmDelete() {
+  if (!deleteTarget.value || deleting.value) return;
+  const id = deleteTarget.value.id;
+  deleteSuccess.value = false;
+  deleting.value = true;
+  const removed = await removeSearch(id);
+  deleting.value = false;
+  if (removed) deleteSuccess.value = true;
+  if ((removed && deleteTarget.value?.id === id) || sessionExpired.value)
+    deleteTarget.value = null;
+}
+const showSuccess = ref(false);
+watch(resetKey, () => {
+  formOpen.value = false;
+  showSuccess.value = true;
+});
+function openForm(): void {
+  if (creating.value) return;
+  clearCreateErrors();
+  showSuccess.value = false;
   formOpen.value = true;
-  await nextTick();
-  formPanel.value
-    ?.querySelector<HTMLInputElement>('input[name="name"]')
-    ?.focus();
 }
 </script>
 <style scoped>
-.saved-layout {
-  align-items: start;
-  display: grid;
-  gap: 32px;
-  grid-template-columns: minmax(0, 1fr) 360px;
+.activity-hint {
+  max-width: 100ch;
+  margin: 16px 0 0;
+  font-size: 13px;
 }
 .section-heading {
-  margin: 0 0 16px;
+  margin: 0 0 8px;
   min-height: 32px;
-}
-.new-search {
-  margin-top: 48px;
-}
-.new-search summary {
-  align-items: center;
-  display: flex;
-  font-size: 15px;
-  font-weight: 700;
-  justify-content: space-between;
-  list-style: none;
-  padding: 18px 20px;
-}
-.new-search summary::-webkit-details-marker {
-  display: none;
-}
-.new-search[open] summary {
-  border-bottom: 1px solid var(--color-border);
-}
-.new-search[open] summary span {
-  transform: rotate(45deg);
-}
-.form-content {
-  padding: 20px;
-}
-.form-intro {
-  margin-bottom: 20px;
-}
-.create-error {
-  margin: 20px 0 0;
-}
-@media (max-width: 800px) {
-  .saved-layout {
-    grid-template-columns: 1fr;
-    gap: 20px;
-  }
-  .new-search {
-    margin-top: 0;
-  }
 }
 @media (max-width: 640px) {
   .page-heading {
@@ -161,9 +150,6 @@ async function openForm(): Promise<void> {
   }
   .page-heading > button {
     width: 100%;
-  }
-  .form-content {
-    padding: 16px;
   }
 }
 </style>

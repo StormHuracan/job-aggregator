@@ -1,33 +1,43 @@
 <template>
   <article class="vacancy-card">
-    <div class="company-avatar" aria-hidden="true">
-      {{ vacancy.company_name?.slice(0, 1).toUpperCase() || "↗" }}
-    </div>
     <div class="vacancy-main">
-      <p class="company">{{ vacancy.company_name ?? "Компания не указана" }}</p>
       <h3>{{ vacancy.title }}</h3>
+      <p class="company">{{ vacancy.company_name ?? "Компания не указана" }}</p>
       <p class="meta">
         <span>{{ vacancy.area_name ?? "Город не указан" }}</span
         ><span v-if="published">Опубликовано {{ published }}</span>
       </p>
-      <p v-if="vacancy.description" class="description">
-        {{ vacancy.description }}
+      <p v-if="snippet" class="description">
+        {{ snippet }}
       </p>
     </div>
     <div class="vacancy-aside">
       <p class="salary">{{ salary }}</p>
-      <a :href="vacancy.source_url" rel="noopener noreferrer" target="_blank"
+      <a
+        v-if="sourceUrl"
+        :href="sourceUrl"
+        rel="noopener noreferrer"
+        target="_blank"
         >{{ vacancy.source === "hh" ? "Открыть на HH.ru" : "Открыть оригинал" }}
         <span aria-hidden="true">↗</span
         ><span class="sr-only"> (в новой вкладке)</span></a
       >
+      <span v-else class="field-hint">Ссылка недоступна</span>
     </div>
   </article>
 </template>
 <script setup lang="ts">
 import { computed } from "vue";
 import type { VacancyResponse } from "../api/vacancies";
+import {
+  safeExternalVacancyUrl,
+  vacancySnippetToText,
+} from "../utils/vacancy-presentation";
 const props = defineProps<{ vacancy: VacancyResponse }>();
+const snippet = computed(() => vacancySnippetToText(props.vacancy.description));
+const sourceUrl = computed(() =>
+  safeExternalVacancyUrl(props.vacancy.source_url),
+);
 const published = computed(() => {
   const date = props.vacancy.published_at
     ? new Date(props.vacancy.published_at)
@@ -60,39 +70,28 @@ const salary = computed(() => {
 <style scoped>
 .vacancy-card {
   display: grid;
-  gap: 16px;
-  grid-template-columns: 44px minmax(0, 1fr) auto;
-  padding: 24px;
+  gap: 16px 32px;
+  grid-template-columns: minmax(0, 1fr) minmax(160px, 240px);
+  padding: 28px;
 }
 .vacancy-card + .vacancy-card {
   border-top: 1px solid var(--color-border);
 }
-.company-avatar {
-  align-items: center;
-  background: var(--color-surface-subtle);
-  border: 1px solid var(--color-border);
-  border-radius: 12px;
-  color: var(--color-muted);
-  display: flex;
-  font-size: 18px;
-  font-weight: 700;
-  height: 44px;
-  justify-content: center;
-}
 .company {
   overflow-wrap: anywhere;
   color: var(--color-muted);
-  font-size: 13px;
+  font-size: 15px;
   margin: 0 0 4px;
 }
 h3 {
+  font-size: 20px;
   margin-bottom: 8px;
 }
 .meta {
   color: var(--color-muted);
   display: flex;
   flex-wrap: wrap;
-  font-size: 13px;
+  font-size: 14px;
   gap: 4px 16px;
   margin: 0;
 }
@@ -115,7 +114,7 @@ h3 {
 }
 .salary {
   color: var(--color-ink);
-  font-size: 15px;
+  font-size: 18px;
   font-variant-numeric: tabular-nums;
   font-weight: 700;
   margin: 0;
@@ -123,7 +122,7 @@ h3 {
 .vacancy-aside a {
   align-items: center;
   display: inline-flex;
-  font-size: 13px;
+  font-size: 14px;
   gap: 8px;
   min-height: 44px;
   text-decoration: none;
@@ -141,19 +140,44 @@ h3 {
 @media (max-width: 700px) {
   .vacancy-card {
     gap: 12px;
-    grid-template-columns: 36px minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr);
     padding: 20px 16px;
-  }
-  .company-avatar {
-    height: 36px;
-    width: 36px;
-    border-radius: 9px;
   }
   .vacancy-aside {
     align-items: start;
     gap: 0;
-    grid-column: 2;
+    grid-column: 1;
     max-width: none;
+  }
+  .vacancy-main,
+  .vacancy-aside {
+    display: contents;
+  }
+  .vacancy-card {
+    gap: 8px;
+  }
+  h3 {
+    order: 0;
+    margin: 0;
+  }
+  .salary {
+    order: 1;
+  }
+  .company {
+    order: 2;
+    margin: 4px 0 0;
+  }
+  .meta {
+    order: 3;
+  }
+  .description {
+    order: 4;
+    margin: 4px 0 0;
+  }
+  .vacancy-aside a,
+  .vacancy-aside > span {
+    order: 5;
+    justify-self: start;
   }
   .description {
     -webkit-line-clamp: 2;

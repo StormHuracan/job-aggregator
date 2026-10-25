@@ -62,6 +62,7 @@ const props = withDefaults(
     submitting?: boolean;
     fieldErrors?: Readonly<Record<string, string>>;
     resetKey?: number;
+    initialValues?: Partial<SavedSearchCreate>;
   }>(),
   { disabled: false, submitting: false, fieldErrors: () => ({}), resetKey: 0 },
 );
@@ -95,11 +96,11 @@ type Field = (typeof fields)[number]["key"];
 const prefix = useId();
 const form = ref<HTMLFormElement | null>(null);
 const values = reactive<Record<Field, string>>({
-  name: "",
-  text: "",
-  area: "",
-  min_salary: "",
-  max_salary: "",
+  name: props.initialValues?.name ?? "",
+  text: props.initialValues?.text ?? "",
+  area: props.initialValues?.area ?? "",
+  min_salary: String(props.initialValues?.min_salary ?? ""),
+  max_salary: String(props.initialValues?.max_salary ?? ""),
 });
 const errors = reactive<Partial<Record<Field, string>>>({});
 const error = (field: Field) => errors[field] ?? props.fieldErrors[field];

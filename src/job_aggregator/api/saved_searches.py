@@ -16,6 +16,21 @@ from job_aggregator.schemas.saved_search import (
 router = APIRouter(prefix="/saved-searches", tags=["saved-searches"])
 
 
+@router.delete("/{search_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_saved_search(
+    search_id: int,
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> None:
+    """Удаляет поиск текущего владельца; чужой идентификатор не раскрывается."""
+    deleted = await UserSavedSearchRepository(session).delete_for_user(
+        current_user.id, search_id
+    )
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Search not found")
+    await session.commit()
+
+
 @router.post(
     "", response_model=SavedSearchResponse, status_code=status.HTTP_201_CREATED
 )
