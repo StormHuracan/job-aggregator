@@ -35,9 +35,10 @@ async def lifespan(app: FastAPI):
     app.state.session_factory = session_factory
 
     scheduler: AsyncIOScheduler | None = None
+    collection_tasks: set[asyncio.Task[None]] = set()
     if settings.scheduler_enabled:
         scheduler = create_scheduler(settings)
-        register_collection_job(scheduler, session_factory, settings)
+        collection_tasks = register_collection_job(scheduler, session_factory, settings)
         scheduler.start()
     app.state.scheduler = scheduler
     cleanup = asyncio.create_task(_expire_otp_flows(app.state.otp_logins))
@@ -53,6 +54,11 @@ async def lifespan(app: FastAPI):
         try:
             if scheduler is not None:
                 scheduler.shutdown()
+                tasks = list(collection_tasks)
+                for task in tasks:
+                    task.cancel()
+                if tasks:
+                    await asyncio.gather(*tasks, return_exceptions=True)
         finally:
             try:
                 if telegram_task is not None:

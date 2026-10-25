@@ -1,3 +1,4 @@
+import asyncio
 import logging
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -44,12 +45,16 @@ async def run_scheduled_collection(
     for user_id in user_ids:
         try:
             result = await service.collect_for_user(user_id)
-            success_count += 1
+            failed_searches = sum(not search.succeeded for search in result.searches)
+            if failed_searches:
+                failed_count += 1
+            else:
+                success_count += 1
             logger.info(
-                "User %d collection: status=%s, searches=%d, "
+                "User %d collection: failed_searches=%d, searches=%d, "
                 "created=%d, updated=%d, skipped=%d, failed=%d, new_matches=%d",
                 user_id,
-                result.status,
+                failed_searches,
                 len(result.searches),
                 sum(s.created for s in result.searches),
                 sum(s.updated for s in result.searches),
@@ -79,12 +84,21 @@ def register_collection_job(
     scheduler: AsyncIOScheduler,
     session_factory: async_sessionmaker[AsyncSession],
     settings: Settings,
-) -> None:
+) -> set[asyncio.Task[None]]:
     """Регистрирует интервальную задачу сбора."""
+    active_tasks: set[asyncio.Task[None]] = set()
+
+    async def tracked_collection() -> None:
+        task = asyncio.create_task(run_scheduled_collection(session_factory, settings))
+        active_tasks.add(task)
+        try:
+            await task
+        finally:
+            active_tasks.discard(task)
+
     scheduler.add_job(
-        run_scheduled_collection,
+        tracked_collection,
         trigger=IntervalTrigger(minutes=settings.scheduler_interval_minutes),
-        args=[session_factory, settings],
         id="collect_saved_searches",
         max_instances=1,
         coalesce=True,
@@ -94,3 +108,4 @@ def register_collection_job(
         "Registered collection job with interval %d minutes",
         settings.scheduler_interval_minutes,
     )
+    return active_tasks

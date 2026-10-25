@@ -1,5 +1,8 @@
+import asyncio
+import logging
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 
@@ -7,6 +10,54 @@ from job_aggregator.jobs.collection import (
     register_collection_job,
     run_scheduled_collection,
 )
+from job_aggregator.services.saved_searches import UserSearchCollectionResult
+
+
+@patch("job_aggregator.jobs.collection.SavedSearchCollectionService")
+@patch("job_aggregator.jobs.collection.UserSavedSearchRepository")
+async def test_job_accepts_real_result_contract(
+    mock_repo_cls, mock_service_cls, caplog
+):
+    mock_repo_cls.return_value.list_enabled_user_ids = AsyncMock(return_value=[1])
+    mock_service_cls.return_value.collect_for_user = AsyncMock(
+        return_value=UserSearchCollectionResult(1, [], 0, 0, 0, 0, 0)
+    )
+    with caplog.at_level(logging.INFO):
+        await run_scheduled_collection(MagicMock(), MagicMock())
+    assert "collection failed" not in caplog.text
+    assert "succeeded=1, failed=0" in caplog.text
+
+
+async def test_registered_job_tracks_active_collection_until_cancelled(monkeypatch):
+    started = asyncio.Event()
+    finished = asyncio.Event()
+
+    async def blocked_collection(*args):
+        started.set()
+        try:
+            await asyncio.Event().wait()
+        finally:
+            finished.set()
+
+    monkeypatch.setattr(
+        "job_aggregator.jobs.collection.run_scheduled_collection", blocked_collection
+    )
+    scheduler = AsyncIOScheduler()
+    settings = MagicMock(scheduler_interval_minutes=60)
+    active = register_collection_job(scheduler, MagicMock(), settings)
+    job = scheduler.get_job("collect_saved_searches")
+    task = asyncio.create_task(job.func(*job.args))
+    try:
+        await asyncio.wait_for(started.wait(), 1)
+        assert active
+        for child in list(active):
+            child.cancel()
+        await asyncio.gather(*list(active), return_exceptions=True)
+        assert finished.is_set()
+    finally:
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
 
 
 @patch("job_aggregator.jobs.collection.SavedSearchCollectionService")
