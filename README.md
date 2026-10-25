@@ -282,6 +282,18 @@ curl http://127.0.0.1:8000/health
 {"status": "ok"}
 ```
 
+## Проверка локального запуска
+
+Перед запуском backend на компьютере выполните `docker compose up -d postgres`
+и `docker compose ps`: PostgreSQL должен перейти в состояние `healthy`.
+Затем примените `uv run alembic upgrade head` и запустите
+`uv run uvicorn --app-dir src job_aggregator.main:app --reload`.
+
+Проверка API: `curl http://127.0.0.1:8000/health`, ожидается `{"status":"ok"}`.
+Состояние контейнеров и ошибки запуска: `docker compose ps` и
+`docker compose logs backend postgres`. Существующий `.env` не перезаписывайте.
+Полный запуск через Compose в начале README включает также frontend.
+
 ## Тесты
 
 Правила организации и запуска тестов: [tests/README.md](tests/README.md).
