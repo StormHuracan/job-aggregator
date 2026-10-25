@@ -8,6 +8,7 @@ from job_aggregator.api.router import api_router
 from job_aggregator.core.config import get_settings
 from job_aggregator.core.logging import configure_logging
 from job_aggregator.db.session import create_engine_and_factory
+from job_aggregator.jobs.collection import register_collection_job
 from job_aggregator.jobs.scheduler import create_scheduler
 from job_aggregator.services.otp_login import OTPLoginService
 
@@ -29,6 +30,7 @@ async def lifespan(app: FastAPI):
     scheduler: AsyncIOScheduler | None = None
     if settings.scheduler_enabled:
         scheduler = create_scheduler(settings)
+        register_collection_job(scheduler, session_factory, settings)
         scheduler.start()
     app.state.scheduler = scheduler
     cleanup = asyncio.create_task(_expire_otp_flows(app.state.otp_logins))
