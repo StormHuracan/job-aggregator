@@ -16,7 +16,7 @@ from job_aggregator.db.repositories.hh_account import HHAccountRepository
 from job_aggregator.db.repositories.saved_search_match import SavedSearchMatchRepository
 from job_aggregator.db.repositories.user import UserSettingsRepository
 from job_aggregator.db.session import get_db_session
-from job_aggregator.schemas.telegram import TelegramLinkResponse
+from job_aggregator.schemas.telegram import TelegramLinkResponse, TelegramStatusResponse
 from job_aggregator.schemas.user import (
     CurrentUserResponse,
     UserSettingsResponse,
@@ -106,6 +106,32 @@ async def update_settings(
         raise HTTPException(500, "Не удалось сохранить настройки") from None
 
     return result
+
+
+@router.get("/me/telegram", response_model=TelegramStatusResponse)
+async def telegram_status(
+    response: Response,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db_session),
+) -> TelegramStatusResponse:
+    """Состояние сервера и привязка владельца без раскрытия chat_id или токенов."""
+    settings = get_settings()
+    try:
+        connected = await db.scalar(
+            select(TelegramBinding.id).where(TelegramBinding.user_id == user.id)
+        )
+    except SQLAlchemyError:
+        await db.rollback()
+        raise HTTPException(500, "Не удалось загрузить статус Telegram") from None
+    response.headers["Cache-Control"] = "no-store"
+    return TelegramStatusResponse(
+        enabled=bool(
+            settings.telegram_enabled
+            and settings.telegram_bot_token
+            and settings.telegram_bot_username
+        ),
+        connected=connected is not None,
+    )
 
 
 @router.post("/me/telegram/link", response_model=TelegramLinkResponse)

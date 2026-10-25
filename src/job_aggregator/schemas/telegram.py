@@ -8,3 +8,8 @@ class TelegramLinkResponse(BaseModel):
 
     url: str
     expires_at: datetime
+
+
+class TelegramStatusResponse(BaseModel):
+    enabled: bool
+    connected: bool

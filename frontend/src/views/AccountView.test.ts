@@ -25,7 +25,7 @@ async function open() {
     ],
   });
   await router.push("/account");
-  wrapper = mount(AccountView, { global: { plugins: [router] } });
+  wrapper = mount(AccountView, { global: { plugins: [router], stubs: { TelegramConnection: true } } });
   await flushPromises();
   return router;
 }

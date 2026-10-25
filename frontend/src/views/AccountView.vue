@@ -198,12 +198,14 @@
             </div>
           </section>
         </div>
+        <TelegramConnection v-if="user && !sessionExpired" @session-expired="user = null; sessionExpired = true" />
       </template>
     </AsyncState>
   </section>
 </template>
 <script setup lang="ts">
 import { computed } from "vue";
+import TelegramConnection from "../components/TelegramConnection.vue";
 import { RouterLink } from "vue-router";
 import AsyncState from "../components/AsyncState.vue";
 import UiAlert from "../components/ui/UiAlert.vue";
