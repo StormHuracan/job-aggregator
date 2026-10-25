@@ -157,6 +157,29 @@ async def test_repository_does_not_commit(
     assert count == 0
 
 
+async def test_list_enabled_user_ids_unique_and_filters(
+    sqlite_session: AsyncSession, users: tuple[User, User]
+) -> None:
+    alice, bob = users
+    repo = UserSavedSearchRepository(sqlite_session)
+
+    await _create_search(repo, alice.id, "A1")
+    await _create_search(repo, alice.id, "A2")
+    s3 = await _create_search(repo, alice.id, "A3")
+    await repo.set_enabled(alice.id, s3.id, False)
+
+    await _create_search(repo, bob.id, "B1")
+    b2 = await _create_search(repo, bob.id, "B2")
+    await repo.set_enabled(bob.id, b2.id, False)
+
+    sqlite_session.add(SavedSearch(name="Orphan", text="x"))
+    await sqlite_session.commit()
+
+    result = await repo.list_enabled_user_ids()
+
+    assert result == [alice.id, bob.id]
+
+
 async def test_delete_search_removes_delivered_matches(
     sqlite_session: AsyncSession, users: tuple[User, User]
 ) -> None:

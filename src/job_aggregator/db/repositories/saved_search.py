@@ -92,6 +92,20 @@ class UserSavedSearchRepository:
         await self._session.flush()
         return search
 
+    async def list_enabled_user_ids(self) -> list[int]:
+        """Возвращает уникальные ID пользователей с активными поисками."""
+        stmt = (
+            select(SavedSearch.user_id)
+            .where(
+                SavedSearch.is_enabled.is_(True),
+                SavedSearch.user_id.is_not(None),
+            )
+            .distinct()
+            .order_by(SavedSearch.user_id)
+        )
+        result = await self._session.scalars(stmt)
+        return list(result)
+
     async def delete_for_user(self, user_id: int, search_id: int) -> bool:
         """Удаляет собственный поиск и его связи, сохраняя сами вакансии."""
         search = await self.get_for_user(user_id, search_id)
